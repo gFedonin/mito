@@ -1,12 +1,14 @@
 from os import makedirs, cpu_count
 from os.path import exists
-from random import shuffle, random
+from random import shuffle, random, randrange
 
 import numpy as np
 import pandas as pd
-import networkx as nx
 from numpy.random.mtrand import choice
 import matplotlib
+
+from Graph import Graph
+
 matplotlib.use('agg')
 import matplotlib.pyplot as plt
 
@@ -29,11 +31,11 @@ dist_threshold = 8
 use_colors = False
 use_cox_data = False
 use_dssp = True
-debug = True
+debug = False
 only_selected_chains = True
 only_mitochondria_to_nuclear = False
 print_random_graphs = True
-random_graph_stat_hist_path = '../res/random_graph_stat_hist_ABC_Aledo_test/'
+random_graph_stat_hist_path = '../res/random_graph_stat_hist_ABC_Aledo_my/'
 temp_path = random_graph_stat_hist_path + 'temp/'
 if debug:
     thread_num = 1
@@ -42,7 +44,7 @@ else:
 if debug:
     permutations_num = 1
 else:
-    permutations_num = 10000
+    permutations_num = 64
 max_iter = 10000
 
 
@@ -92,156 +94,22 @@ def chi_sqr(pos_lists, interface_set, total_pos_num):
     return total_pos_num*res
 
 
-def gen_random_subgraph(connected_graph, target_node_num, target_edge_num):
-    target_graph = None
-    edge_num = -1
-    i = 0
-    while edge_num < target_edge_num and i < max_iter:
-        i += 1
-        selected_nodes = set()
-        neighbors = set()
-        nodes = list(connected_graph.nodes)
-        node = choice(nodes)
-        selected_nodes.add(node)
-        for n in connected_graph[node]:
-            neighbors.add(n)
-        for i in range(1, target_node_num):
-            if len(neighbors) == 0:
-                break
-            node = choice(list(neighbors))
-            neighbors.remove(node)
-            selected_nodes.add(node)
-            for n in connected_graph[node]:
-                if n not in selected_nodes:
-                    neighbors.add(n)
-        if len(selected_nodes) < target_node_num:
-            continue
-        target_graph = nx.induced_subgraph(connected_graph, selected_nodes)
-        edge_num = nx.number_of_edges(target_graph)
-    if edge_num < target_edge_num:
-        return None
-    return target_graph
-
-
-def gen_random_subgraph_new(connected_graph, target_node_num, target_edge_num):
-    target_graph = None
-    edge_num = -1
-    iterNum = 0
-    while edge_num < target_edge_num and iterNum < max_iter:
-        iterNum += 1
-        selected_nodes = set()
-        outgoing_edges = {}
-        nodes = list(connected_graph.nodes)
-        node = choice(nodes)
-        selected_nodes.add(node)
-        for n in connected_graph[node]:
-            outgoing_edges[n] = 1
-        for i in range(1, target_node_num):
-            if len(outgoing_edges) == 0:
-                break
-            edges = []
-            weights = []
-            total_outgoing_edges = 0
-            for n, c in outgoing_edges.items():
-                edges.append(n)
-                weights.append(c)
-                total_outgoing_edges += c
-            for j in range(len(weights)):
-                weights[j] /= total_outgoing_edges
-            n = choice(edges, p=weights)
-            outgoing_edges.pop(n)
-            selected_nodes.add(n)
-            for n1 in connected_graph[n]:
-                if n1 not in selected_nodes:
-                    c = 0
-                    for n2 in connected_graph[n1]:
-                        if n2 in selected_nodes:
-                            c += 1
-                    outgoing_edges[n1] = c
-
-        if len(selected_nodes) < target_node_num:
-            continue
-        unprocessed = set()
-        for n in connected_graph.nodes:
-            if n not in selected_nodes:
-                unprocessed.add(n)
-        i = target_node_num
-        g = nx.induced_subgraph(connected_graph, selected_nodes).copy()
-        while len(outgoing_edges) > 0:
-            i += 1
-            edges = []
-            weights = []
-            total_outgoing_edges = 0
-            for n, c in outgoing_edges.items():
-                edges.append(n)
-                weights.append(c)
-                total_outgoing_edges += c
-            for j in range(len(weights)):
-                weights[j] /= total_outgoing_edges
-            v = choice(edges, p=weights)
-            unprocessed.remove(v)
-            if random() < target_node_num/i:
-                u = choice(list(selected_nodes))
-                selected_nodes.remove(u)
-                g.remove_node(u)
-                selected_nodes.add(v)
-                g.add_node(v)
-                for n in connected_graph[v]:
-                    if n in selected_nodes:
-                        g.add_edge(n, v)
-                if not nx.is_connected(g):
-                    selected_nodes.add(u)
-                    g.add_node(u)
-                    selected_nodes.remove(v)
-                    g.remove_node(v)
-                    for n in connected_graph[u]:
-                        if n in selected_nodes:
-                            g.add_edge(n, u)
-                else:
-                    for n1 in connected_graph[v]:
-                        if n1 in unprocessed:
-                            c = 0
-                            for n2 in connected_graph[n1]:
-                                if n2 in selected_nodes:
-                                    c += 1
-                            outgoing_edges[n1] = c
-                    for n1 in connected_graph[u]:
-                        c1 = outgoing_edges.get(n1)
-                        if c1 is not None:
-                            if c1 > 1:
-                                outgoing_edges[n1] = c1 - 1
-                            else:
-                                outgoing_edges.pop(n1)
-            c = outgoing_edges.get(v)
-            if c is not None:
-                outgoing_edges.pop(v)
-        target_graph = nx.induced_subgraph(connected_graph, selected_nodes)
-        edge_num = target_graph.number_of_edges()
-    if edge_num < target_edge_num:
-        return None
-    return target_graph
-
-
 def gen_random_subgraph_new1(connected_graph, target_node_num, target_edge_num):
     target_graph = None
     edge_num = -1
     iterNum = 0
-    max_node = 0
-    for n in connected_graph:
-        if n > max_node:
-            max_node = n
+    max_node = connected_graph.size
     while edge_num < target_edge_num and iterNum < max_iter:
         iterNum += 1
         selected_nodes = np.zeros(max_node + 1, dtype=int)
         outgoing_edges = np.zeros(max_node + 1, dtype=int)
         edge_weights = np.zeros(max_node + 1, dtype=float)
         node_weights = np.zeros(max_node + 1, dtype=float)
-        nodes = list(connected_graph.nodes)
-        node = choice(nodes)
+        node = choice(connected_graph.nodes)
         selected_nodes[node] = 1
         sel_nodes_num = 1
         outgoing_edges_num = 0
-        for n in connected_graph[node]:
+        for n in connected_graph.neighbors[node]:
             outgoing_edges[n] = 1
             outgoing_edges_num += 1
         for i in range(1, target_node_num):
@@ -254,10 +122,10 @@ def gen_random_subgraph_new1(connected_graph, target_node_num, target_edge_num):
             outgoing_edges[n] = 0
             selected_nodes[n] = 1
             sel_nodes_num += 1
-            for n1 in connected_graph[n]:
+            for n1 in connected_graph.neighbors[n]:
                 if selected_nodes[n1] == 0:
                     c = 0
-                    for n2 in connected_graph[n1]:
+                    for n2 in connected_graph.neighbors[n1]:
                         if selected_nodes[n2] == 1:
                             c += 1
                     outgoing_edges_num += c - outgoing_edges[n1]
@@ -273,7 +141,7 @@ def gen_random_subgraph_new1(connected_graph, target_node_num, target_edge_num):
                 unprocessed_num += 1
         i = target_node_num
         sel_nodes = list(n for n in range(max_node + 1) if selected_nodes[n] == 1)
-        g = nx.induced_subgraph(connected_graph, sel_nodes).copy()
+        g = connected_graph.subgraph(sel_nodes)
         while outgoing_edges_num > 0:
             i += 1
             np.copyto(edge_weights, outgoing_edges)
@@ -285,43 +153,51 @@ def gen_random_subgraph_new1(connected_graph, target_node_num, target_edge_num):
                 np.copyto(node_weights, selected_nodes)
                 node_weights /= sel_nodes_num
                 u = choice(max_node + 1, p=node_weights)
-                selected_nodes[u] = 0
-                g.remove_node(u)
-                selected_nodes[v] = 1
-                g.add_node(v)
-                for n in connected_graph[v]:
-                    if selected_nodes[n] == 1:
-                        g.add_edge(n, v)
-                if not nx.is_connected(g):
-                    selected_nodes[u] = 1
-                    g.add_node(u)
-                    selected_nodes[v] = 0
-                    g.remove_node(v)
-                    for n in connected_graph[u]:
+                isolated = False
+                for u_n in g.neighbors[u]:
+                    if len(g.neighbors[u_n]) == 1:
+                        isolated = True
+                        break
+                if not isolated:
+                    selected_nodes[u] = 0
+                    g.delete_node(u)
+                    selected_nodes[v] = 1
+                    g.add_node(v)
+                    for n in connected_graph.neighbors[v]:
                         if selected_nodes[n] == 1:
-                            g.add_edge(n, u)
-                else:
-                    for n1 in connected_graph[v]:
-                        if unprocessed[n1] == 1:
-                            c = 0
-                            for n2 in connected_graph[n1]:
-                                if selected_nodes[n2] == 1:
-                                    c += 1
-                            outgoing_edges_num += c - outgoing_edges[n1]
-                            outgoing_edges[n1] = c
+                            g.neighbors[n].append(v)
+                            g.neighbors[v].append(n)
+                    if not g.is_connected():
+                        selected_nodes[u] = 1
+                        g.add_node(u)
+                        selected_nodes[v] = 0
+                        g.delete_node(v)
+                        for n in connected_graph.neighbors[u]:
+                            if selected_nodes[n] == 1:
+                                g.neighbors[n].append(u)
+                                g.neighbors[u].append(n)
+                    else:
+                        for n1 in connected_graph.neighbors[v]:
+                            if unprocessed[n1] == 1:
+                                c = 0
+                                for n2 in connected_graph.neighbors[n1]:
+                                    if selected_nodes[n2] == 1:
+                                        c += 1
+                                outgoing_edges_num += c - outgoing_edges[n1]
+                                outgoing_edges[n1] = c
 
-                    for n1 in connected_graph[u]:
-                        c1 = outgoing_edges[n1]
-                        if c1 > 0:
-                            outgoing_edges[n1] = c1 - 1
-                            outgoing_edges_num -= 1
+                        for n1 in connected_graph.neighbors[u]:
+                            c1 = outgoing_edges[n1]
+                            if c1 > 0:
+                                outgoing_edges[n1] = c1 - 1
+                                outgoing_edges_num -= 1
             c = outgoing_edges[v]
             if c > 0:
                 outgoing_edges_num -= c
                 outgoing_edges[v] = 0
         sel_nodes = list(n for n in range(max_node + 1) if selected_nodes[n] == 1)
-        target_graph = nx.induced_subgraph(connected_graph, sel_nodes)
-        edge_num = target_graph.number_of_edges()
+        target_graph = connected_graph.subgraph(sel_nodes)
+        edge_num = target_graph.count_edges()
     if edge_num < target_edge_num:
         return None
     return target_graph
@@ -346,12 +222,12 @@ def compute_stat_on_random_subgraphs(thread_id, big_graph, small_graphs, n, pos_
                 max_iter_stops.append(int(s[2]))
                 shuffled_indices = [int(i) for i in s[3].split(';')]
                 int_set = set()
-                for g in random_graphs:
-                    int_set.update(g)
-                chi_sqr_stat.append(chi_sqr(pos_lists, int_set, big_graph.number_of_nodes()))
+                for node_list in random_graphs:
+                    int_set.update(node_list)
+                chi_sqr_stat.append(chi_sqr(pos_lists, int_set, len(big_graph.nodes)))
                 for j in range(len(sampled_graphs)):
-                    gr = set(random_graphs[j].nodes)
-                    g = set(sampled_graphs[j].nodes)
+                    gr = set(random_graphs[j])
+                    g = set(sampled_graphs[j])
                     jaccard_index_stat[shuffled_indices[j]].append(len(gr.intersection(g))/len(gr.union(g)))
     iter_done = len(chi_sqr_stat)
     for i in range(iter_done, n):
@@ -365,18 +241,17 @@ def compute_stat_on_random_subgraphs(thread_id, big_graph, small_graphs, n, pos_
             graphs_to_sample.append(small_graphs[j])
         while len(graphs_to_sample) > 0:
             small_graph = graphs_to_sample.pop()
-            target_node_num = small_graph.number_of_nodes()
-            target_edge_num = small_graph.number_of_edges()
+            target_node_num = len(small_graph.nodes)
+            target_edge_num = small_graph.count_edges()
             nodes = set(big_graph.nodes)
             for g in random_graphs:
                 for n in g.nodes:
                     nodes.remove(n)
-            filtered_graph = nx.induced_subgraph(big_graph, nodes)
-            connected_comps = nx.connected_components(filtered_graph)
+            filtered_graph = big_graph.subgraph(nodes)
+            connected_comps = filtered_graph.connected_components()
             connected_comps_filtered = []
-            for comp in connected_comps:
-                g = nx.induced_subgraph(filtered_graph, comp)
-                if g.number_of_nodes() >= target_node_num and g.number_of_edges() >= target_edge_num:
+            for g in connected_comps:
+                if len(g.nodes) >= target_node_num and g.count_edges() >= target_edge_num:
                     connected_comps_filtered.append(g)
             shuffle(connected_comps_filtered)
             random_graph = None
@@ -408,7 +283,7 @@ def compute_stat_on_random_subgraphs(thread_id, big_graph, small_graphs, n, pos_
         int_set = set()
         for g in random_graphs:
             int_set.update(g.nodes)
-        chi_sqr_stat.append(chi_sqr(pos_lists, int_set, big_graph.number_of_nodes()))
+        chi_sqr_stat.append(chi_sqr(pos_lists, int_set, len(big_graph.nodes)))
         for j in range(len(sampled_graphs)):
             gr = set(random_graphs[j].nodes)
             g = set(sampled_graphs[j].nodes)
@@ -418,14 +293,14 @@ def compute_stat_on_random_subgraphs(thread_id, big_graph, small_graphs, n, pos_
 
 
 def create_graph(pos_to_coords, poses):
-    g = nx.Graph()
-    g.add_nodes_from(poses)
+    g = Graph(nodes=poses)
     for i in range(len(poses)):
         p_i = poses[i]
         for j in range(i + 1, len(poses)):
             p_j = poses[j]
             if dist(pos_to_coords[p_i], pos_to_coords[p_j]) < dist_threshold:
-                g.add_edge(p_i, p_j)
+                g.neighbors[p_i].append(p_j)
+                g.neighbors[p_j].append(p_i)
     return g
 
 
@@ -436,9 +311,9 @@ def test_independence(pos_to_coords, cluster_ids, interface, filter_set, prot_na
     big_graph = create_graph(pos_to_coords, filtered_poses)
 
     if debug:
-        connected_comps = nx.connected_components(big_graph)
+        connected_comps = big_graph.connected_components()
         print('big graph:')
-        lens = [str(len(comp)) for comp in connected_comps]
+        lens = [str(len(comp.nodes)) for comp in connected_comps]
         print('connected comp lens: ' + ' '.join(lens))
 
     cl_to_poses = {}
@@ -452,14 +327,12 @@ def test_independence(pos_to_coords, cluster_ids, interface, filter_set, prot_na
                     cl_to_poses[cl] = l
                 l.append(pos)
 
-    interface_graph = nx.induced_subgraph(big_graph, list(interface))
-    int_con_comps = list(nx.connected_components(interface_graph))
+    interface_graph = big_graph.subgraph(interface)
+    small_graphs = interface_graph.connected_components()
     if debug:
         print('interface:')
-        lens = [str(len(comp)) for comp in int_con_comps]
+        lens = [str(len(comp.nodes)) for comp in small_graphs]
         print('connected comp lens: ' + ' '.join(lens))
-
-    small_graphs = [nx.induced_subgraph(interface_graph, comp) for comp in int_con_comps]
 
     stat = chi_sqr(cl_to_poses.values(), interface, len(filtered_poses))
     iter_nums = []

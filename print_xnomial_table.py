@@ -65,7 +65,7 @@ def read_dssp_data():
     return prot_to_buried, prot_to_non_buried
 
 
-def parse_pdb(path_to_pdb, only_selected_chains):
+def parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot):
     chain_to_site_coords = {}
     with open(path_to_pdb, 'r') as f:
         curr_chain = ''

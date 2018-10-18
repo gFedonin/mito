@@ -1,4 +1,4 @@
 import cProfile
-import compute_interface_stat_rand_int
+import compute_interface_stat_rand_int_my
 
-cProfile.run('compute_interface_stat_rand_int.main()')
+cProfile.run('compute_interface_stat_rand_int_my.print_unified_intefaces_aledo()')

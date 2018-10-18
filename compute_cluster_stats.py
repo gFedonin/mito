@@ -8,10 +8,14 @@ import math
 from numpy.random.mtrand import shuffle
 from sklearn.externals.joblib import Parallel, delayed
 
-path_to_pdb = '../pdb/5ara.pdb1'#   './pdb/1occ.pdb1' './pdb/1bgy.pdb1'
-path_to_colors = '../Coloring/internal_gaps.2.pajek/'
+# path_to_pdb = '../pdb/5ara.pdb1'
+# path_to_pdb = '../pdb/1occ.pdb1'
+path_to_pdb = '../pdb/1bgy.pdb1'
+path_to_colors = '../Coloring/internal_gaps.2/'
 
-chain_to_prot = {'W': 'atp6'}# {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}{'C': 'cytb'}
+# chain_to_prot = {'W': 'atp6'}
+# chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
+chain_to_prot = {'C': 'cytb'}
 dist_threshold = 8
 permutations_num = 10000
 
@@ -200,15 +204,64 @@ def cluster_stat(neighbors, cluster_id, permute):
     return cluster_id_to_stat, cluster_population
 
 
-def pvalue(perm_array, stat_val):
-    perm_array.sort()
-    c = 0
-    while c < permutations_num:
-        if perm_array[c] >= stat_val:
-            break
+def cluster_stat1(neighbors, cluster_id, permute):
+    pos_to_cluster_id = cluster_id
+    if permute:
+        # print(cluster_id)
+        non_zeroes = []
+        for i in range(len(cluster_id)):
+            if cluster_id[i] > 0:
+                non_zeroes.append(cluster_id[i])
+        shuffle(non_zeroes)
+        shuffled = np.zeros(len(cluster_id), dtype=int)
+        j = 0
+        for i in range(len(cluster_id)):
+            if cluster_id[i] > 0:
+                shuffled[i] = non_zeroes[j]
+                j += 1
+        pos_to_cluster_id = shuffled
+        # print(pos_to_cluster_id)
+    cluster_id_to_stat = {}
+    cl_num = 0
+    for id in pos_to_cluster_id:
+        if id > cl_num:
+            cl_num = id
+    cl_num += 1
+    internal_edges_count = np.zeros(cl_num, dtype=float)
+    total_edges_count = np.zeros(cl_num, dtype=int)
+    for pos, n_list in neighbors.items():
+        if pos < len(pos_to_cluster_id):
+            same_cluster_count = 0
+            cl_id = pos_to_cluster_id[pos]
+            total_neighbor_count = 0
+            for p in n_list:
+                if p < len(pos_to_cluster_id):
+                    if pos_to_cluster_id[p] == cl_id:
+                        same_cluster_count += 1
+                    if pos_to_cluster_id[p] > 0:
+                        total_neighbor_count += 1
+            if total_neighbor_count > 0:
+                internal_edges_count[cl_id] += same_cluster_count
+                total_edges_count[cl_id] += total_neighbor_count
+    total = 0
+    total_c = 0
+    for cl_id in range(1, cl_num):
+        total += internal_edges_count[cl_id]
+        total_c += total_edges_count[cl_id]
+        if total_edges_count[cl_id] > 0:
+            cluster_id_to_stat[cl_id] = internal_edges_count[cl_id]/total_edges_count[cl_id]
         else:
+            cluster_id_to_stat[cl_id] = 0
+    cluster_id_to_stat['total'] = total/total_c
+    return cluster_id_to_stat, total_edges_count
+
+
+def pvalue(perm_array, stat_val):
+    c = 0
+    for val in perm_array:
+        if val >= stat_val:
             c += 1
-    return (permutations_num - c) / permutations_num
+    return c / permutations_num
 
 
 def print_hist(perm_array, name, cl_num):
@@ -242,7 +295,7 @@ def main():
                 cl_num = id
         cl_num += 1
         cluster_id_to_stat, counts = cluster_stat(neighbors, cluster_ids, False)
-        permutations = Parallel(n_jobs=-1)(delayed(cluster_stat)(neighbors, cluster_ids, True) for i in range(permutations_num))
+        permutations = Parallel(n_jobs=-1)(delayed(cluster_stat1)(neighbors, cluster_ids, True) for i in range(permutations_num))
         perm_array = {}
         for i in range(1, cl_num):
             perm_array[i] = []
