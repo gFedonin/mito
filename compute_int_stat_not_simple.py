@@ -10,7 +10,7 @@ from sklearn.externals.joblib import Parallel, delayed
 
 from compute_interface_stat_not_so_simple import exchange_vertices, get_cluster_neighbors, get_neighbors, parse_colors, \
     parse_out, parse_site2pdb, print_table, count, chi_sqr
-from print_xnomial_table import parse_pdb, read_cox_data, get_interface
+from assimptotic_tests import parse_pdb, read_cox_data, get_interface
 
 path_to_pdb = './pdb/1occ.pdb1'
 path_to_cox_data = './Coloring/COXdata.txt'

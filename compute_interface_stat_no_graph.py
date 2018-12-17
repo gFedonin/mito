@@ -8,7 +8,7 @@ import math
 from numpy.random.mtrand import shuffle
 from sklearn.externals.joblib import Parallel, delayed
 
-from print_xnomial_table import parse_pdb, read_cox_data, get_interface
+from assimptotic_tests import parse_pdb, read_cox_data, get_interface
 
 path_to_pdb = './pdb/1occ.pdb1'
 path_to_cox_data = './Coloring/COXdata.txt'

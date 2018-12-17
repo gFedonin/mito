@@ -15,7 +15,7 @@ from scipy.stats import chi2_contingency
 from sklearn.externals.joblib import Parallel, delayed
 
 from compute_cluster_stats import dist, parse_colors, parse_out, parse_site2pdb
-from print_xnomial_table import parse_pdb, get_interface, read_cox_data
+from assimptotic_tests import parse_pdb, get_interface, read_cox_data
 
 path_to_pdb = './COX/1occ.pdb1'
 path_to_cox_data = './Coloring/COXdata.txt'

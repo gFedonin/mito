@@ -12,7 +12,7 @@ from scipy.stats import entropy
 from compute_cluster_stats import parse_pdb, parse_colors, parse_out, parse_site2pdb
 
 path_to_pdb = './pdb/1occ.pdb1'
-path_to_colors = './Coloring/all.cor2pcor.p05/'
+path_to_colors = './Coloring/internal_gaps.2/'
 path_to_cox_data = './Coloring/COXdata.txt'
 path_to_dssp = './Coloring/buried/1occ.csv'
 

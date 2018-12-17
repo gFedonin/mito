@@ -8,14 +8,16 @@ import math
 from numpy.random.mtrand import shuffle
 from sklearn.externals.joblib import Parallel, delayed
 
+from assimptotic_tests import parse_dssp
+
 # path_to_pdb = '../pdb/5ara.pdb1'
-# path_to_pdb = '../pdb/1occ.pdb1'
-path_to_pdb = '../pdb/1bgy.pdb1'
+path_to_pdb = '../pdb/1occ.pdb1'
+# path_to_pdb = '../pdb/1bgy.pdb1'
 path_to_colors = '../Coloring/internal_gaps.2/'
 
 # chain_to_prot = {'W': 'atp6'}
-# chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
-chain_to_prot = {'C': 'cytb'}
+chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
+# chain_to_prot = {'C': 'cytb'}
 dist_threshold = 8
 permutations_num = 10000
 
@@ -218,62 +220,62 @@ def cluster_stat(neighbors, cluster_id, permute):
     return cluster_id_to_stat, cluster_population, cluster_densities
 
 
-def cluster_stat1(neighbors, cluster_id, permute):
-    pos_to_cluster_id = cluster_id
+def cluster_stat1(neighbors, pos_to_ss_array, ss_types, permute):
+    pos_to_ss = pos_to_ss_array
     if permute:
         # print(cluster_id)
         non_zeroes = []
-        for i in range(len(cluster_id)):
-            if cluster_id[i] > 0:
-                non_zeroes.append(cluster_id[i])
+        for i in range(len(pos_to_ss_array)):
+            if pos_to_ss_array[i] is not None:
+                non_zeroes.append(pos_to_ss_array[i])
         shuffle(non_zeroes)
-        shuffled = np.zeros(len(cluster_id), dtype=int)
+        shuffled = np.empty(len(pos_to_ss_array), dtype=object)
         j = 0
-        for i in range(len(cluster_id)):
-            if cluster_id[i] > 0:
+        for i in range(len(pos_to_ss_array)):
+            if pos_to_ss_array[i] is not None:
                 shuffled[i] = non_zeroes[j]
                 j += 1
-        pos_to_cluster_id = shuffled
+        pos_to_ss = shuffled
         # print(pos_to_cluster_id)
     cluster_id_to_stat = {}
-    cl_num = 0
-    for id in pos_to_cluster_id:
-        if id > cl_num:
-            cl_num = id
-    cl_num += 1
-    internal_edges_count = np.zeros(cl_num, dtype=float)
-    external_edges_count = np.zeros(cl_num, dtype=int)
-    cluster_population = np.zeros(cl_num, dtype=int)
-    cluster_densities = np.zeros(cl_num, dtype=float)
+    internal_edges_count = {}
+    external_edges_count = {}
+    cluster_population = {}
+    cluster_densities = {}
+    for ss in ss_types:
+        internal_edges_count[ss] = 0
+        external_edges_count[ss] = 0
+        cluster_population[ss] = 0
+        cluster_densities[ss] = 0
     for pos, n_list in neighbors.items():
-        if pos < len(pos_to_cluster_id):
+        if pos < len(pos_to_ss):
             internal_edge_count = 0
-            cl_id = pos_to_cluster_id[pos]
+            ss = pos_to_ss[pos]
             external_edge_count = 0
             for p in n_list:
-                if p < len(pos_to_cluster_id):
-                    if pos_to_cluster_id[p] == cl_id:
+                if p < len(pos_to_ss):
+                    if pos_to_ss[p] == ss:
                         internal_edge_count += 1
                     else:
-                        if pos_to_cluster_id[p] > 0:
+                        if pos_to_ss[p] is not None:
                             external_edge_count += 1
             internal_edge_count /= 2
-            internal_edges_count[cl_id] += internal_edge_count
-            external_edges_count[cl_id] += external_edge_count
-            cluster_population[cl_id] += 1
+            internal_edges_count[ss] += internal_edge_count
+            external_edges_count[ss] += external_edge_count
+            cluster_population[ss] += 1
     total_internal = 0
     total_external = 0
-    for cl_id in range(1, cl_num):
-        inter = internal_edges_count[cl_id]
-        exter = external_edges_count[cl_id]
+    for ss in ss_types:
+        inter = internal_edges_count[ss]
+        exter = external_edges_count[ss]
         total_internal += inter
         total_external += exter
-        n = cluster_population[cl_id]
+        n = cluster_population[ss]
         if inter + exter > 0:
-            cluster_id_to_stat[cl_id] = inter/(inter + exter)
-            cluster_densities[cl_id] = inter/(n*(n - 1)/2)
+            cluster_id_to_stat[ss] = inter/(inter + exter)
+            cluster_densities[ss] = inter/(n*(n - 1)/2)
         else:
-            cluster_id_to_stat[cl_id] = 0
+            cluster_id_to_stat[ss] = 0
     cluster_id_to_stat['total'] = total_internal/(total_internal + total_external/2)
     return cluster_id_to_stat, cluster_population, cluster_densities
 
@@ -301,50 +303,47 @@ def main():
         if not exists(out_path):
             os.makedirs(out_path)
     chain_to_site_coords = parse_pdb(chain_to_prot, path_to_pdb)
-    if use_colors:
-        prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
-    else:
-        prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-    # for prot_name, pos_to_coords in chain_to_site_coords.items():
-        print(prot_name + ' ' + method_name)
+    chain_to_ss = parse_dssp()
+    for chain, pos_to_ss in chain_to_ss.items():
+        prot_name = chain_to_prot[chain]
+        print(prot_name)
         pos_to_coords = chain_to_site_coords[prot_name]
         neighbors = get_neighbors(pos_to_coords)
-        # cluster_ids = chain_to_clusters[prot_name]
-        cl_num = 0
-        for id in cluster_ids:
-            if id > cl_num:
-                cl_num = id
-        cl_num += 1
-        cluster_id_to_stat, cluster_population, cluster_densities = cluster_stat1(neighbors, cluster_ids, False)
-        permutations = Parallel(n_jobs=-1)(delayed(cluster_stat1)(neighbors, cluster_ids, True) for i in range(permutations_num))
+        ss_types = set()
+        pos_to_ss_array = np.empty(len(pos_to_ss) + 1, dtype=object)
+        for pos, ss in pos_to_ss.items():
+            pos_to_ss_array[pos] = ss
+            ss_types.add(ss)
+        cluster_id_to_stat, cluster_population, cluster_densities = cluster_stat1(neighbors, pos_to_ss_array, ss_types, False)
+        permutations = Parallel(n_jobs=-1)(delayed(cluster_stat1)(neighbors, pos_to_ss_array, ss_types, True)
+                                           for i in range(permutations_num))
         perm_array = {}
         density_array = {}
-        for i in range(1, cl_num):
-            perm_array[i] = []
-            density_array[i] = []
+        for ss in ss_types:
+            perm_array[ss] = []
+            density_array[ss] = []
         perm_array['total'] = []
         for cl_id_to_stat, cl_population, cl_density in permutations:
-            for i in range(1, cl_num):
-                perm_array[i].append(cl_id_to_stat[i])
-                density_array[i].append(cl_density[i])
+            for ss in ss_types:
+                perm_array[ss].append(cl_id_to_stat[ss])
+                density_array[ss].append(cl_density[ss])
             perm_array['total'].append(cl_id_to_stat['total'])
         print('cluster n_sites stat_value expected_value pvalue density_value expected_density pvalue_density')
-        for i in range(1, cl_num):
-            stat_val = cluster_id_to_stat[i]
-            av = np.mean(perm_array[i])
-            pval = pvalue(perm_array[i], stat_val)
-            dens = cluster_densities[i]
-            av_dens = np.mean(density_array[i])
-            pval_dens = pvalue(density_array[i], dens)
+        for ss in ss_types:
+            stat_val = cluster_id_to_stat[ss]
+            av = np.mean(perm_array[ss])
+            pval = pvalue(perm_array[ss], stat_val)
+            dens = cluster_densities[ss]
+            av_dens = np.mean(density_array[ss])
+            pval_dens = pvalue(density_array[ss], dens)
             if print_hist:
-                print_hist(perm_array[i], prot_name + ' ' + method_name, i)
-            print("%d %d %1.2f %1.2f %1.4f %1.2f %1.2f %1.4f" % (i, cluster_population[i], stat_val, av, pval, dens,
+                print_hist(perm_array[ss], prot_name, ss)
+            print("%s %d %1.2f %1.2f %1.4f %1.2f %1.2f %1.4f" % (ss, cluster_population[ss], stat_val, av, pval, dens,
                                                                  av_dens, pval_dens))
         stat_val = cluster_id_to_stat['total']
         av = np.mean(perm_array['total'])
         pval = pvalue(perm_array['total'], stat_val)
-        print('total %d %1.2f %1.2f %1.4f' % (cluster_population.sum() - cluster_population[0], stat_val, av, pval))
+        print('total %d %1.2f %1.2f %1.4f' % (sum(cluster_population.values()), stat_val, av, pval))
         print()
 
 
