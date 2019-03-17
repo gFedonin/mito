@@ -14,8 +14,8 @@ from compute_cluster_stats import dist, parse_colors, parse_out, parse_site2pdb
 from assimptotic_tests import parse_pdb, get_interface, read_cox_data
 
 pdb_id = '1occ'
-path_to_pdb = '../pdb/' + pdb_id + '.pdb1'
-# path_to_pdb = '../pdb/1be3.pdb1'
+# path_to_pdb = '../pdb/' + pdb_id + '.pdb1'
+path_to_pdb = '../pdb/1be3.pdb1'
 path_to_cox_data = '../Coloring/COXdata.txt'
 path_to_cytb_data = '../aledo.csv'
 path_to_surf_racer_data = '../surf_racer/burried/1bgy.csv'
@@ -24,16 +24,17 @@ path_to_dssp_data = path_to_dssp_dir + pdb_id + '.csv'
 path_to_dssp_raw = path_to_dssp_dir + pdb_id + '.dssp'
 path_to_colors = '../Coloring/internal_gaps.2/'
 
-chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
-# chain_to_prot = {'C': 'cytb'}
-prot_to_chain = {'cox1': 'A', 'cox2': 'B', 'cox3': 'C'}
-# prot_to_chain = {'cytb': 'C'}
+# chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
+chain_to_prot = {'C': 'cytb'}
+# prot_to_chain = {'cox1': 'A', 'cox2': 'B', 'cox3': 'C'}
+prot_to_chain = {'cytb': 'C'}
 dist_threshold = 8
 
 debug = True
 only_selected_chains = True
 only_mitochondria_to_nuclear = False
-random_graph_stat_hist_path = '../res/random_graph_stat_hist_Aledo_igraph_enc_rep/'
+random_graph_stat_hist_path = '../res/random_graph_stat_hist_Aledo_igraph_cytb_enc_rep/'
+random_graph_suffix = '_Aledo_igraph_enc_merged.random_graphs'
 random_graph_path = '../res/'
 permutations_num = 10000
 reverse_shuffle = False
@@ -45,14 +46,30 @@ print_rejects_stat = False
 
 def chi_sqr(pos_lists, interface_set, total_pos_num):
     res = 0
-    p_exp = len(interface_set)/total_pos_num
+    p_int = len(interface_set)/total_pos_num
     for pos_list in pos_lists:
         c = 0
         for pos in pos_list:
             if pos in interface_set:
                 c += 1
-        p_obs = c/len(pos_list)
-        res += (p_obs - p_exp)*(p_obs - p_exp)/p_exp
+        exp = len(pos_list)*p_int
+        res += (c - exp)*(c - exp)/exp
+    return total_pos_num*res
+
+
+def chi_sqr_ind(pos_lists, interface_set, total_pos_num):
+    res = 0
+    p_int = len(interface_set)/total_pos_num
+    for pos_list in pos_lists:
+        c = 0
+        for pos in pos_list:
+            if pos in interface_set:
+                c += 1
+        p_obs = c/total_pos_num
+        p_group = len(pos_list)/total_pos_num
+        res += (p_obs - p_group*p_int)**2/(p_group*p_int)
+        p_obs = (len(pos_list) - c)/total_pos_num
+        res += (p_obs - p_group*(1 - p_int))**2/(p_group*(1 - p_int))
     return total_pos_num*res
 
 
@@ -71,7 +88,7 @@ def compute_stat_on_random_subgraphs(big_graph, small_graphs, pos_lists, prot_na
     chi_sqr_stat = []
     identity_stat = [[] for i in range(len(small_graphs))]
     max_iter_stops = []
-    with open(random_graph_path + prot_name + '_Aledo_igraph_merged.random_graphs', 'r') as f:
+    with open(random_graph_path + prot_name + random_graph_suffix, 'r') as f:
         for line in f.readlines():
             sampled_graphs = []
             random_graphs = []
@@ -89,7 +106,7 @@ def compute_stat_on_random_subgraphs(big_graph, small_graphs, pos_lists, prot_na
             int_set = set()
             for g in random_graphs:
                 int_set.update(g)
-            chi_sqr_stat.append(chi_sqr(pos_lists, int_set, big_graph.vcount()))
+            chi_sqr_stat.append(chi_sqr_func(pos_lists, int_set, big_graph.vcount()))
             for j in range(len(sampled_graphs)):
                 gr = set(random_graphs[j])
                 g = set(sampled_graphs[j])
@@ -101,7 +118,7 @@ def compute_stat_on_random_subgraphs_for_each_group(small_graphs, cl_to_poses, p
     jaccard_index_stat = {cl: [] for cl in cl_to_poses.keys()}
     identity_stat = [[] for i in range(len(small_graphs))]
     max_iter_stops = []
-    with open(random_graph_path + prot_name + '_Aledo_igraph_enc_merged.random_graphs', 'r') as f:
+    with open(random_graph_path + prot_name + random_graph_suffix, 'r') as f:
         for line in f.readlines():
             sampled_graphs = []
             random_graphs = []
@@ -127,6 +144,40 @@ def compute_stat_on_random_subgraphs_for_each_group(small_graphs, cl_to_poses, p
                 g = set(sampled_graphs[j])
                 identity_stat[shuffled_indices[j]].append(len(gr.intersection(g))/len(g))
     return jaccard_index_stat, identity_stat, max_iter_stops
+
+
+def compute_stat_on_random_subgraphs_all(big_graph, small_graphs, cl_to_poses, prot_name):
+    chi_sqr_stat = []
+    identity_stat = [[] for i in range(len(small_graphs))]
+    jaccard_index_stat = {cl: [] for cl in cl_to_poses.keys()}
+    max_iter_stops = []
+    with open(random_graph_path + prot_name + random_graph_suffix, 'r') as f:
+        for line in f.readlines():
+            sampled_graphs = []
+            random_graphs = []
+            s = line.strip().split('\t')
+            for g in s[0].split(';'):
+                nodes = [int(n) for n in g.split(',')]
+                sampled_graphs.append(nodes)
+            for g in s[1].split(';'):
+                nodes = [int(n) for n in g.split(',')]
+                random_graphs.append(nodes)
+            max_iter_stops.append(int(s[2]))
+            shuffled_indices = [int(i) for i in s[3].split(';')]
+            if reverse_shuffle:
+                shuffled_indices.reverse()
+            int_set = set()
+            for g in random_graphs:
+                int_set.update(g)
+            chi_sqr_stat.append(chi_sqr_func(cl_to_poses.values(), int_set, big_graph.vcount()))
+            stat = jaccard_index(cl_to_poses, int_set)
+            for cl, jaccard in stat.items():
+                jaccard_index_stat[cl].append(jaccard)
+            for j in range(len(sampled_graphs)):
+                gr = set(random_graphs[j])
+                g = set(sampled_graphs[j])
+                identity_stat[shuffled_indices[j]].append(len(gr.intersection(g))/len(g))
+    return chi_sqr_stat, jaccard_index_stat, identity_stat, max_iter_stops
 
 
 def create_graph(pos_to_coords, poses):
@@ -206,8 +257,8 @@ def print_jaccard_index_stat(jaccard_index_stats, stat, prot_name):
         plt.xlabel('Jaccard index')
         plt.ylabel('Proportion of graphs')
         weights = np.ones_like(jaccard_index_stats[cl]) / float(len(jaccard_index_stats[cl]))
-        plt.hist(jaccard_index_stats, 50, weights=weights, facecolor='g', alpha=0.75)
-        plt.savefig(random_graph_stat_hist_path + prot_name + '_' + str(cl) + '_chi.png')
+        plt.hist(jaccard_index_stats[cl], 50, weights=weights, facecolor='g', alpha=0.75)
+        plt.savefig(random_graph_stat_hist_path + prot_name + '_' + str(cl) + '_jaccard.png')
         plt.clf()
 
 
@@ -223,21 +274,28 @@ def print_rejection_freqs(max_iter_stops, prot_name):
     plt.clf()
 
 
+chi_sqr_func = chi_sqr_ind
+
+
 def test_independence_chi_sqr(pos_to_coords, cluster_ids, interface, filter_set, prot_name):
     cl_to_poses, filtered_poses_num, big_graph, small_graphs = compute_graphs(pos_to_coords, cluster_ids, interface, filter_set)
 
-    stat = chi_sqr(cl_to_poses.values(), interface, filtered_poses_num)
+    stat = chi_sqr_func(cl_to_poses.values(), interface, filtered_poses_num)
 
     chi_sqr_stats, identities, max_iter_stops = compute_stat_on_random_subgraphs(big_graph, small_graphs,
                                                                                  list(cl_to_poses.values()), prot_name)
-    if not exists(random_graph_stat_hist_path):
-        makedirs(random_graph_stat_hist_path)
 
     if print_identity_hist:
+        if not exists(random_graph_stat_hist_path):
+            makedirs(random_graph_stat_hist_path)
         print_random_graphs_identity(small_graphs, identities, prot_name)
     if print_stat_hist:
+        if not exists(random_graph_stat_hist_path):
+            makedirs(random_graph_stat_hist_path)
         print_chi_sqr_stat(chi_sqr_stats, stat, prot_name)
     if print_rejects_stat:
+        if not exists(random_graph_stat_hist_path):
+            makedirs(random_graph_stat_hist_path)
         print_rejection_freqs(max_iter_stops, prot_name)
 
     i = 0
@@ -248,21 +306,25 @@ def test_independence_chi_sqr(pos_to_coords, cluster_ids, interface, filter_set,
 
 
 def test_independence_jaccard(pos_to_coords, cluster_ids, interface, filter_set, prot_name):
-    cl_to_poses, filtered_poses_num, big_graph, small_graphs = compute_graphs(pos_to_coords, cluster_ids, interface, filter_set)
+    cl_to_poses, filtered_poses_num, big_graph, small_graphs = compute_graphs(pos_to_coords, cluster_ids, interface,
+                                                                              filter_set)
 
     stat = jaccard_index(cl_to_poses, interface)
 
     jaccard_index_stats, identities, max_iter_stops = compute_stat_on_random_subgraphs_for_each_group(small_graphs,
                                                                                  cl_to_poses, prot_name)
 
-    if not exists(random_graph_stat_hist_path):
-        makedirs(random_graph_stat_hist_path)
-
     if print_identity_hist:
+        if not exists(random_graph_stat_hist_path):
+            makedirs(random_graph_stat_hist_path)
         print_random_graphs_identity(small_graphs, identities, prot_name)
     if print_stat_hist:
+        if not exists(random_graph_stat_hist_path):
+            makedirs(random_graph_stat_hist_path)
         print_jaccard_index_stat(jaccard_index_stats, stat, prot_name)
     if print_rejects_stat:
+        if not exists(random_graph_stat_hist_path):
+            makedirs(random_graph_stat_hist_path)
         print_rejection_freqs(max_iter_stops, prot_name)
 
     cl_num = 0
@@ -279,7 +341,55 @@ def test_independence_jaccard(pos_to_coords, cluster_ids, interface, filter_set,
     return p_values
 
 
-p_values_func = test_independence_jaccard
+def test_independence_all(pos_to_coords, cluster_ids, interface, filter_set, prot_name):
+    cl_to_poses, filtered_poses_num, big_graph, small_graphs = compute_graphs(pos_to_coords, cluster_ids, interface, filter_set)
+
+    group_stat = chi_sqr_func(cl_to_poses.values(), interface, filtered_poses_num)
+    individual_stats = jaccard_index(cl_to_poses, interface)
+
+    chi_sqr_stats, jaccard_index_stats, identities, max_iter_stops = compute_stat_on_random_subgraphs_all(big_graph,
+                                                                                                          small_graphs,
+                                                                                 cl_to_poses, prot_name)
+
+    if print_identity_hist:
+        if not exists(random_graph_stat_hist_path):
+            makedirs(random_graph_stat_hist_path)
+        print_random_graphs_identity(small_graphs, identities, prot_name)
+    if print_stat_hist:
+        if not exists(random_graph_stat_hist_path):
+            makedirs(random_graph_stat_hist_path)
+        print_chi_sqr_stat(chi_sqr_stats, group_stat, prot_name)
+        print_jaccard_index_stat(jaccard_index_stats, individual_stats, prot_name)
+    if print_rejects_stat:
+        if not exists(random_graph_stat_hist_path):
+            makedirs(random_graph_stat_hist_path)
+        print_rejection_freqs(max_iter_stops, prot_name)
+
+    chi_bigger_count = 0
+    for s in chi_sqr_stats:
+        if s >= group_stat:
+            chi_bigger_count += 1
+    cl_num = 0
+    for id in cluster_ids:
+        if id > cl_num:
+            cl_num = id
+    group_p_value = chi_bigger_count/len(chi_sqr_stats)
+    individual_up_p_values = np.zeros(cl_num, dtype=float)
+    individual_down_p_values = np.zeros(cl_num, dtype=float)
+    for cl, val in individual_stats.items():
+        jaccard_bigger_count = 0
+        jaccard_smaller_count = 0
+        for s in jaccard_index_stats[cl]:
+            if s >= val:
+                jaccard_bigger_count += 1
+            if s <= val:
+                jaccard_smaller_count += 1
+        individual_up_p_values[cl - 1] = jaccard_bigger_count/len(jaccard_index_stats[cl])
+        individual_down_p_values[cl - 1] = jaccard_smaller_count / len(jaccard_index_stats[cl])
+    return group_p_value, individual_up_p_values, individual_down_p_values
+
+
+p_values_func = test_independence_chi_sqr#test_independence_jaccard
 
 
 def count(cluster_ids, interface, filter_set=None):
@@ -366,8 +476,12 @@ def print_unified_intefaces_aledo():
             interface = set(non_burried.loc[(non_burried['Cont'] == 1) | (non_burried['Cont'] == 3), 'Pos'])
         coords = chain_to_site_coords[prot_to_chain[prot_name]]
         non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['Pos']))
-        p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['Pos']), prot_name)
-        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
+        # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['Pos']), prot_name)
+        # print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
+        group_p_value, individual_up_p_values, individual_down_p_values = test_independence_all(coords, cluster_ids,
+                                                                interface, set(non_burried['Pos']), prot_name)
+        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
+                    individual_up_p_values, individual_down_p_values)
 
 
 def print_unified_intefaces_aledo_cytb():
@@ -384,8 +498,12 @@ def print_unified_intefaces_aledo_cytb():
         interface = set(non_burried.loc[non_burried['InterContact'] > 0, 'ResidNr'])
         coords = chain_to_site_coords[prot_to_chain[prot_name]]
         non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['ResidNr']))
-        p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
-        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
+        # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
+        # print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
+        group_p_value, individual_up_p_values, individual_down_p_values = test_independence_all(coords,
+                                                        cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
+        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
+                    individual_up_p_values, individual_down_p_values)
 
 
 def print_unified_intefaces_aledo_cytb_enc():
@@ -402,8 +520,12 @@ def print_unified_intefaces_aledo_cytb_enc():
         interface = set(non_burried.loc[(non_burried['InterContact'] > 0) | (non_burried['DeltaSASA'] > 0), 'ResidNr'])
         coords = chain_to_site_coords[prot_to_chain[prot_name]]
         non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['ResidNr']))
-        p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
-        print_table(non_int_counts, int_counts, 'ENC_noninterf', 'CONT + ENC_interface', p_value)
+        # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
+        # print_table(non_int_counts, int_counts, 'ENC_noninterf', 'CONT + ENC_interface', p_value)
+        group_p_value, individual_up_p_values, individual_down_p_values = test_independence_all(coords, cluster_ids,
+                                                                    interface, set(non_burried['ResidNr']), prot_name)
+        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
+                    individual_up_p_values, individual_down_p_values)
 
 
 def print_unified_intefaces_enc():
@@ -423,8 +545,12 @@ def print_unified_intefaces_enc():
             if i not in non_buried:
                 cluster_ids[i] = 0
         non_int_counts, int_counts = count(cluster_ids, interface, non_buried)
-        p_value = p_values_func(coords, cluster_ids, interface, non_buried, prot_name)
-        print_table(non_int_counts, int_counts, 'ENC_noninterf', 'CONT + ENC_interface', p_value)
+        # p_value = p_values_func(coords, cluster_ids, interface, non_buried, prot_name)
+        # print_table(non_int_counts, int_counts, 'ENC_noninterf', 'CONT + ENC_interface', p_value)
+        group_p_value, individual_up_p_values, individual_down_p_values = test_independence_all(coords, cluster_ids,
+                                                                                    interface, non_buried, prot_name)
+        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
+                    individual_up_p_values, individual_down_p_values)
 
 
 def print_separate_intefaces():
@@ -477,7 +603,8 @@ def print_separate_intefaces():
                 print_table(cl_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
 
 
-def print_table(cl_counts, int_counts, label1, label2, p_value):
+def print_table(cl_counts, int_counts, label1, label2, total_p_value=None, individual_up_p_values=None,
+                individual_down_p_values=None):
     count_list = []
     group_num = []
     for c in cl_counts:
@@ -489,15 +616,19 @@ def print_table(cl_counts, int_counts, label1, label2, p_value):
     for c in int_counts:
         count_list.append(str(c))
     print(label2 + '\t' + '\t'.join(count_list))
-    if type(p_value) is float:
-        print('p_value = %1.4f\n' % p_value)
-    elif type(p_value) is np.ndarray:
-        print('p_value', end='')
-        for val in p_value:
+    if individual_up_p_values is not None:
+        print('upper_p_value', end='')
+        for val in individual_up_p_values:
             print('\t%1.4f' % val, end='')
-        print('\n')
-    else:
-        print('error: strange type of p_value!')
+        print()
+    if individual_down_p_values is not None:
+        print('lower_p_value', end='')
+        for val in individual_down_p_values:
+            print('\t%1.4f' % val, end='')
+        print()
+    if total_p_value is not None:
+        print('total p_value = %1.4f\n' % total_p_value)
+
 
 
 def parse_dssp():
@@ -547,5 +678,6 @@ if __name__ == '__main__':
     # print_unified_intefaces_enc()
     # print_separate_intefaces()
     # print_unified_intefaces_aledo()
-    # print_unified_intefaces_aledo_cytb_enc()
-    print_secondary_structure_enrichment()
+    # print_unified_intefaces_aledo_cytb()
+    print_unified_intefaces_aledo_cytb_enc()
+    # print_secondary_structure_enrichment()
