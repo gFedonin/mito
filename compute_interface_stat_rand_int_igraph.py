@@ -618,7 +618,7 @@ def print_unified_intefaces_aledo():
         print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
 
 
-def print_unified_intefaces_aledo1():
+def print_unified_intefaces_aledo_cytb():
     chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
     if use_colors:
         prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
@@ -642,7 +642,7 @@ def print_unified_intefaces_aledo1():
         print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
 
 
-def print_unified_intefaces_aledo1_enc():
+def print_unified_intefaces_aledo_cytb_enc():
     chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
     if use_colors:
         prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
@@ -766,4 +766,4 @@ if __name__ == '__main__':
     # print_unified_intefaces_enc()
     # print_separate_intefaces()
     # print_unified_intefaces_aledo()
-    print_unified_intefaces_aledo1_enc()
+    print_unified_intefaces_aledo_cytb_enc()

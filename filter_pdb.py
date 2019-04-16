@@ -1,6 +1,6 @@
-path_to_pdb = '../pdb/1be3.pdb1'
-out_path = '../pdb/1be3_C.pdb1'
-chain = 'C'
+path_to_pdb = '../pdb/5ara.pdb1'
+out_path = '../pdb/5ara_W.pdb1'
+chain = 'W'
 
 if __name__ == '__main__':
     with open(out_path, 'w') as f:

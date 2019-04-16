@@ -31,8 +31,8 @@ prot_to_chain = {'cytb': 'C'}
 dist_threshold = 8
 
 debug = True
-only_selected_chains = True
-only_mitochondria_to_nuclear = False
+only_selected_chains = False
+only_mitochondria_to_nuclear = True
 random_graph_stat_hist_path = '../res/random_graph_stat_hist_Aledo_igraph_cytb_enc_rep/'
 random_graph_suffix = '_Aledo_igraph_enc_merged.random_graphs'
 random_graph_path = '../res/'
@@ -82,6 +82,22 @@ def jaccard_index(cl_to_poses, interface_set):
                 intersection += 1
         res[cl] = intersection/(len(pos_list) + len(interface_set) - intersection)
     return res
+
+
+def contigency_table(cl_to_poses, interface_set):
+    interface = {}
+    noninterface = {}
+    for cl, pos_list in cl_to_poses.items():
+        c_in = 0
+        c_out = 0
+        for pos in pos_list:
+            if pos in interface_set:
+                c_in += 1
+            else:
+                c_out += 1
+        interface[cl] = c_in
+        noninterface[cl] = c_out
+    return interface, noninterface
 
 
 def compute_stat_on_random_subgraphs(big_graph, small_graphs, pos_lists, prot_name):
@@ -151,6 +167,7 @@ def compute_stat_on_random_subgraphs_all(big_graph, small_graphs, cl_to_poses, p
     identity_stat = [[] for i in range(len(small_graphs))]
     jaccard_index_stat = {cl: [] for cl in cl_to_poses.keys()}
     max_iter_stops = []
+    interface = {cl: [] for cl in cl_to_poses.keys()}
     with open(random_graph_path + prot_name + random_graph_suffix, 'r') as f:
         for line in f.readlines():
             sampled_graphs = []
@@ -171,13 +188,16 @@ def compute_stat_on_random_subgraphs_all(big_graph, small_graphs, cl_to_poses, p
                 int_set.update(g)
             chi_sqr_stat.append(chi_sqr_func(cl_to_poses.values(), int_set, big_graph.vcount()))
             stat = jaccard_index(cl_to_poses, int_set)
+            inter, noninter = contigency_table(cl_to_poses, int_set)
+            for cl, c in inter.items():
+                interface[cl].append(c)
             for cl, jaccard in stat.items():
                 jaccard_index_stat[cl].append(jaccard)
             for j in range(len(sampled_graphs)):
                 gr = set(random_graphs[j])
                 g = set(sampled_graphs[j])
                 identity_stat[shuffled_indices[j]].append(len(gr.intersection(g))/len(g))
-    return chi_sqr_stat, jaccard_index_stat, identity_stat, max_iter_stops
+    return chi_sqr_stat, jaccard_index_stat, identity_stat, max_iter_stops, interface
 
 
 def create_graph(pos_to_coords, poses):
@@ -347,7 +367,7 @@ def test_independence_all(pos_to_coords, cluster_ids, interface, filter_set, pro
     group_stat = chi_sqr_func(cl_to_poses.values(), interface, filtered_poses_num)
     individual_stats = jaccard_index(cl_to_poses, interface)
 
-    chi_sqr_stats, jaccard_index_stats, identities, max_iter_stops = compute_stat_on_random_subgraphs_all(big_graph,
+    chi_sqr_stats, jaccard_index_stats, identities, max_iter_stops, inter = compute_stat_on_random_subgraphs_all(big_graph,
                                                                                                           small_graphs,
                                                                                  cl_to_poses, prot_name)
 
@@ -376,17 +396,20 @@ def test_independence_all(pos_to_coords, cluster_ids, interface, filter_set, pro
     group_p_value = chi_bigger_count/len(chi_sqr_stats)
     individual_up_p_values = np.zeros(cl_num, dtype=float)
     individual_down_p_values = np.zeros(cl_num, dtype=float)
+    expected_interface = np.zeros(cl_num, dtype=float)
     for cl, val in individual_stats.items():
         jaccard_bigger_count = 0
         jaccard_smaller_count = 0
+        sum_inter = sum(inter[cl])
         for s in jaccard_index_stats[cl]:
             if s >= val:
                 jaccard_bigger_count += 1
             if s <= val:
                 jaccard_smaller_count += 1
+        expected_interface[cl - 1] = sum_inter/len(jaccard_index_stats[cl])
         individual_up_p_values[cl - 1] = jaccard_bigger_count/len(jaccard_index_stats[cl])
         individual_down_p_values[cl - 1] = jaccard_smaller_count / len(jaccard_index_stats[cl])
-    return group_p_value, individual_up_p_values, individual_down_p_values
+    return group_p_value, individual_up_p_values, individual_down_p_values, expected_interface
 
 
 p_values_func = test_independence_chi_sqr#test_independence_jaccard
@@ -478,10 +501,11 @@ def print_unified_intefaces_aledo():
         non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['Pos']))
         # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['Pos']), prot_name)
         # print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
-        group_p_value, individual_up_p_values, individual_down_p_values = test_independence_all(coords, cluster_ids,
-                                                                interface, set(non_burried['Pos']), prot_name)
+        group_p_value, individual_up_p_values, individual_down_p_values, individual_expected_vals = \
+            test_independence_all(coords, cluster_ids, interface, set(non_burried['Pos']), prot_name)
         print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
-                    individual_up_p_values, individual_down_p_values)
+                    individual_up_p_values, individual_down_p_values, individual_expected_vals, 'ожидаемо не в интерфейсе',
+                    'ожидаемо в интерфейсе')
 
 
 def print_unified_intefaces_aledo_cytb():
@@ -500,10 +524,11 @@ def print_unified_intefaces_aledo_cytb():
         non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['ResidNr']))
         # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
         # print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
-        group_p_value, individual_up_p_values, individual_down_p_values = test_independence_all(coords,
-                                                        cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
+        group_p_value, individual_up_p_values, individual_down_p_values, individual_expected_vals = \
+            test_independence_all(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
         print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
-                    individual_up_p_values, individual_down_p_values)
+                    individual_up_p_values, individual_down_p_values, individual_expected_vals, 'ожидаемо не в интерфейсе',
+                    'ожидаемо в интерфейсе')
 
 
 def print_unified_intefaces_aledo_cytb_enc():
@@ -522,10 +547,11 @@ def print_unified_intefaces_aledo_cytb_enc():
         non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['ResidNr']))
         # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
         # print_table(non_int_counts, int_counts, 'ENC_noninterf', 'CONT + ENC_interface', p_value)
-        group_p_value, individual_up_p_values, individual_down_p_values = test_independence_all(coords, cluster_ids,
-                                                                    interface, set(non_burried['ResidNr']), prot_name)
+        group_p_value, individual_up_p_values, individual_down_p_values, individual_expected_vals = \
+            test_independence_all(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
         print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
-                    individual_up_p_values, individual_down_p_values)
+                    individual_up_p_values, individual_down_p_values, individual_expected_vals, 'ожидаемо не в интерфейсе',
+                    'ожидаемо в интерфейсе')
 
 
 def print_unified_intefaces_enc():
@@ -547,10 +573,11 @@ def print_unified_intefaces_enc():
         non_int_counts, int_counts = count(cluster_ids, interface, non_buried)
         # p_value = p_values_func(coords, cluster_ids, interface, non_buried, prot_name)
         # print_table(non_int_counts, int_counts, 'ENC_noninterf', 'CONT + ENC_interface', p_value)
-        group_p_value, individual_up_p_values, individual_down_p_values = test_independence_all(coords, cluster_ids,
-                                                                                    interface, non_buried, prot_name)
+        group_p_value, individual_up_p_values, individual_down_p_values, individual_expected_vals = \
+            test_independence_all(coords, cluster_ids, interface, non_buried, prot_name)
         print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
-                    individual_up_p_values, individual_down_p_values)
+                    individual_up_p_values, individual_down_p_values, individual_expected_vals, 'ожидаемо не в интерфейсе',
+                    'ожидаемо в интерфейсе')
 
 
 def print_separate_intefaces():
@@ -604,7 +631,7 @@ def print_separate_intefaces():
 
 
 def print_table(cl_counts, int_counts, label1, label2, total_p_value=None, individual_up_p_values=None,
-                individual_down_p_values=None):
+                individual_down_p_values=None, individual_expected_vals=None, expected_label1=None, expected_label2=None):
     count_list = []
     group_num = []
     for c in cl_counts:
@@ -616,6 +643,18 @@ def print_table(cl_counts, int_counts, label1, label2, total_p_value=None, indiv
     for c in int_counts:
         count_list.append(str(c))
     print(label2 + '\t' + '\t'.join(count_list))
+    if expected_label1 is not None:
+        print(expected_label1, end='')
+        i = 0
+        for val in individual_expected_vals:
+            print('\t%1.1f' % (int_counts[i] + cl_counts[i] - val), end='')
+            i += 1
+        print()
+    if expected_label2 is not None:
+        print(expected_label2, end='')
+        for val in individual_expected_vals:
+            print('\t%1.1f' % val, end='')
+        print()
     if individual_up_p_values is not None:
         print('upper_p_value', end='')
         for val in individual_up_p_values:
