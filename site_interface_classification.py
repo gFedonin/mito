@@ -1,15 +1,14 @@
-import sys
-
 import Bio
 import numpy as np
 from Bio.PDB import make_dssp_dict
 from Bio.PDB.DSSP import residue_max_acc
 from Bio.SeqUtils import seq3
+from sklearn.externals.joblib import Parallel, delayed
 
 from compute_cluster_stats import parse_pdb, dist
 
-pdb_name = '1be3'# '1occ' '5ara' '1bgy'
-path_to_pdb = '../pdb/' + pdb_name + '.pdb1'
+pdb_name = '1bgy'#'1be3'  '2occ' '5ara'
+path_to_pdb = '../pdb/' + pdb_name + '.pdb'
 dssp_path = '../dssp/'
 # chain_to_prot = {'W': 'atp6'}
 # chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
@@ -18,7 +17,7 @@ surf_racer_path = '../surf_racer/'
 out_path_sr = '../surf_racer/burried/' + pdb_name + '.csv'#'./Coloring/buried/1bgy.csv' './Coloring/buried/5ara.csv'
 #'./Coloring/buried/1bgy.csv' './Coloring/buried/5ara.csv'
 chain = 'C'
-out_path_aledo = '../Coloring/cytb_1be_Aledo_4ang_biopython.csv'
+out_path_aledo = '../Coloring/cytb_1bgy_Aledo_4ang.csv'
 
 ras_threshold = 0.05
 dist_threshold = 4
@@ -36,14 +35,17 @@ def parse_dssp(add_chain=True):
     else:
         dssp, keys = make_dssp_dict(dssp_path + pdb_name + '.dssp')
     for (chainid, resid), dssp_stat in dssp.items():
-        if chainid == chain:
-            aa = seq3(dssp_stat[0]).upper()
-            acc = dssp_stat[2]/max_asa[aa]
-            if acc < ras_threshold:
-                burried = '1'
-            else:
-                burried = '0'
-            f.write('%s\t%d\t%s\t%1.3f\t%1.3f\t%s\n' % (chainid, resid[1], dssp_stat[0], dssp_stat[2], acc, burried))
+        if add_chain and chainid != chain:
+            continue
+        if chainid not in chain_to_prot:
+            continue
+        aa = seq3(dssp_stat[0]).upper()
+        acc = dssp_stat[2]/max_asa[aa]
+        if acc < ras_threshold:
+            burried = '1'
+        else:
+            burried = '0'
+        f.write('%s\t%d\t%s\t%1.3f\t%1.3f\t%s\n' % (chainid, resid[1], dssp_stat[0], dssp_stat[2], acc, burried))
 
 
 def parse_surf_racer():
@@ -84,7 +86,10 @@ def parse_pdb_Aledo(path_to_pdb):
                         pos_to_coords = {}
                 else:
                     curr_chain = chain
-                pos = int(s[5])
+                try:
+                    pos = int(s[5])
+                except:
+                    a =0
                 if curr_pos == -1:
                     curr_pos = pos
                 else:
@@ -96,6 +101,20 @@ def parse_pdb_Aledo(path_to_pdb):
         chain_to_site_coords[curr_chain] = pos_to_coords
         pos_to_coords[curr_pos] = heavy_atoms
         chain_to_site_coords[curr_chain] = pos_to_coords
+    return chain_to_site_coords
+
+
+def parse_pdb_Aledo_biopython():
+    chain_to_site_coords = {}
+    structure = Bio.PDB.PDBParser().get_structure(pdb_name, path_to_pdb)
+    model = structure[0]
+    for chn in model:
+        pos_to_coords = {}
+        for residue in chn:
+            pos = int(residue.id[1])
+            atoms = [tuple(atom.coord) for atom in residue]
+            pos_to_coords[pos] = atoms
+        chain_to_site_coords[chn.id] = pos_to_coords
     return chain_to_site_coords
 
 
@@ -297,6 +316,207 @@ def compute_aledo_classification_biopython(skip_intra=True):
                        (chain, pos, aa, ASAc, ACCc, ASAm, ACCm, inter, intra, Cont, dASA, BCEE))
 
 
+def compute_residue_stat(residue, chn, model):
+    intra = 0
+    inter = 0
+    for ch in model:
+        if ch.id == chn:
+            continue
+        if ch.id in chain_to_prot:
+            for r in ch:
+                if residue_dist_all_heavy(residue, r) < dist_threshold:
+                    intra += 1
+        else:
+            for r in ch:
+                if residue_dist_all_heavy(residue, r) < dist_threshold:
+                    inter += 1
+    return intra, inter
+
+
+def compute_aledo_classification_biopython_cox(skip_intra=False):
+    structure = Bio.PDB.PDBParser().get_structure(pdb_name, path_to_pdb)
+    model = structure[0]
+    for chn, prot in chain_to_prot.items():
+        print(prot)
+        chain_pdb = model[chn]
+        pos_to_data = {}
+        for line in open(dssp_path + pdb_name + '.csv').readlines()[1:]:
+            s = line.strip().split()
+            if s[0] != chn:
+                continue
+            pos = int(s[1])
+            aa = s[2]
+            ASAc = float(s[3])
+            ACCc = float(s[4])
+            pos_to_data[pos] = (aa, ASAc, ACCc)
+        for line in open(dssp_path + pdb_name + '_' + chn + '.csv').readlines()[1:]:
+            s = line.strip().split()
+            pos = int(s[1])
+            ASAm = float(s[3])
+            ACCm = float(s[4])
+            aa, ASAc, ACCc = pos_to_data[pos]
+            pos_to_data[pos] = (aa, ASAc, ACCc, ASAm, ACCm)
+        with open(out_path_aledo, 'a') as fout:
+            fout.write('chain\tpos\tAA\tASAc\tACCc\tASAm\tACCm\tInterContact\tIntraContact\tCont\tdASA\tBCEE\n')
+            tasks = Parallel(n_jobs=-1)(delayed(compute_residue_stat)(residue, chn, model) for residue in chain_pdb)
+            it = iter(tasks)
+            for residue in chain_pdb:
+                intra, inter = next(it)
+                pos = int(residue.id[1])
+                if pos not in pos_to_data.keys():
+                    continue
+                aa, ASAc, ACCc, ASAm, ACCm = pos_to_data[pos]
+                dASA = ASAm-ASAc
+                #Cont
+                # intra = 0
+                # inter = 0
+                # for ch in model:
+                #     if ch.id == chain:
+                #         continue
+                #     if ch.id in chain_to_prot:
+                #         for r in ch:
+                #             if residue_dist_all_heavy(residue, r) < dist_threshold:
+                #                 intra += 1
+                #     else:
+                #         for r in ch:
+                #             if residue_dist_all_heavy(residue, r) < dist_threshold:
+                #                 inter += 1
+                if skip_intra:
+                    if inter == 0:
+                        Cont = 0
+                    else:
+                        Cont = 2
+                else:
+                    if intra == 0:
+                        if inter == 0:
+                            Cont = 0
+                        else:
+                            Cont = 2
+                    else:
+                        if inter == 0:
+                            Cont = 1
+                        else:
+                            Cont = 3
+                #BCEE
+                if ACCm <= ras_threshold:
+                    BCEE = 'BURIED'
+                elif Cont > 0:
+                    BCEE = 'CONT'
+                elif dASA > 0:
+                    BCEE = 'ENC_interface'
+                elif dASA == 0:
+                    BCEE = 'ENC_noninterf'
+                else:
+                    print('%d BCEE fail: dASA=%1.2f!!!' % (pos, dASA))
+                # BURIED -> Residues with ACCm <= 5
+                # CONT -> Residues with ACCm > 5 & Cont > 0
+                # ENC_interface -> Residues with ACCm > 5 & Cont == 0 & dASA > 0
+                # ENC_noninterf -> Residues with ACCm > 5 & Cont == 0 & dASA == 0
+                fout.write('%s\t%d\t%s\t%1.2f\t%1.2f\t%1.2f\t%1.2f\t%d\t%d\t%d\t%1.2f\t%s\n' %
+                           (chain, pos, aa, ASAc, ACCc, ASAm, ACCm, inter, intra, Cont, dASA, BCEE))
+
+
+def compute_pos_stat(coords, chn, chain_to_site_coords):
+    intra = 0
+    inter = 0
+    for ch, pos_to_coords in chain_to_site_coords.items():
+        if ch == chn:
+            continue
+        if ch in chain_to_prot:
+            for p, c in pos_to_coords.items():
+                if dist_aledo(coords, c) < dist_threshold:
+                    intra += 1
+        else:
+            for p, c in pos_to_coords.items():
+                if dist_aledo(coords, c) < dist_threshold:
+                    inter += 1
+    return intra, inter
+
+
+def compute_aledo_classification_cox(skip_intra=False):
+    chain_to_site_coords = parse_pdb_Aledo_biopython()
+    # prot_to_neighbors = {prot: get_neighbors(coords) for prot, coords in prot_to_site_coords.items()}
+    for chn, prot in chain_to_prot.items():
+        print(prot)
+        site_coords = chain_to_site_coords[chn]
+        pos_to_data = {}
+        for line in open(dssp_path + pdb_name + '.csv').readlines()[1:]:
+            s = line.strip().split()
+            if s[0] != chn:
+                continue
+            pos = int(s[1])
+            aa = s[2]
+            ASAc = float(s[3])
+            ACCc = float(s[4])
+            pos_to_data[pos] = (aa, ASAc, ACCc)
+        for line in open(dssp_path + pdb_name + '_' + chn + '.csv').readlines()[1:]:
+            s = line.strip().split()
+            pos = int(s[1])
+            ASAm = float(s[3])
+            ACCm = float(s[4])
+            aa, ASAc, ACCc = pos_to_data[pos]
+            pos_to_data[pos] = (aa, ASAc, ACCc, ASAm, ACCm)
+        pos_list = sorted(list(pos_to_data.keys()))
+        with open(out_path_aledo, 'a') as fout:
+            fout.write('chain\tpos\tAA\tASAc\tACCc\tASAm\tACCm\tInterContact\tIntraContact\tCont\tdASA\tBCEE\n')
+            tasks = Parallel(n_jobs=-1)(delayed(compute_pos_stat)(site_coords[pos], chn, chain_to_site_coords)
+                                        for pos in pos_list)
+            it = iter(tasks)
+            for pos in pos_list:
+                aa, ASAc, ACCc, ASAm, ACCm = pos_to_data[pos]
+                dASA = ASAm-ASAc
+                #Cont
+                intra, inter = next(it)
+                # intra = 0
+                # inter = 0
+                # coords = site_coords[pos]
+                # for ch, pos_to_coords in chain_to_site_coords.items():
+                #     if ch == chn:
+                #         continue
+                #     if ch in chain_to_prot:
+                #         for p, c in pos_to_coords.items():
+                #             if dist_aledo(coords, c) < dist_threshold:
+                #                 intra += 1
+                #     else:
+                #         for p, c in pos_to_coords.items():
+                #             if dist_aledo(coords, c) < dist_threshold:
+                #                 inter += 1
+                if skip_intra:
+                    if inter == 0:
+                        Cont = 0
+                    else:
+                        Cont = 2
+                else:
+                    if intra == 0:
+                        if inter == 0:
+                            Cont = 0
+                        else:
+                            Cont = 2
+                    else:
+                        if inter == 0:
+                            Cont = 1
+                        else:
+                            Cont = 3
+                #BCEE
+                if ACCm <= ras_threshold:
+                    BCEE = 'BURIED'
+                elif Cont > 0:
+                    BCEE = 'CONT'
+                elif dASA > 0:
+                    BCEE = 'ENC_interface'
+                elif dASA == 0:
+                    BCEE = 'ENC_noninterf'
+                else:
+                    print('%d BCEE fail: dASA=%1.2f!!!' % (pos, dASA))
+                    BCEE = 'ENC_noninterf'
+                # BURIED -> Residues with ACCm <= 5
+                # CONT -> Residues with ACCm > 5 & Cont > 0
+                # ENC_interface -> Residues with ACCm > 5 & Cont == 0 & dASA > 0
+                # ENC_noninterf -> Residues with ACCm > 5 & Cont == 0 & dASA == 0
+                fout.write('%s\t%d\t%s\t%1.2f\t%1.2f\t%1.2f\t%1.2f\t%d\t%d\t%d\t%1.2f\t%s\n' %
+                           (chn, pos, aa, ASAc, ACCc, ASAm, ACCm, inter, intra, Cont, dASA, BCEE))
+
+
 def compute_aledo_classification_8ang(skip_intra=True):
     prot_to_site_coords = parse_pdb(chain_to_prot, path_to_pdb)
     prot = chain_to_prot[chain]
@@ -376,6 +596,7 @@ def compute_aledo_classification_8ang(skip_intra=True):
 if __name__ == '__main__':
     # parse_surf_racer()
     # parse_dssp(False)
-    # compute_aledo_classification()
+    compute_aledo_classification()
     # compute_aledo_classification_8ang()
-    compute_aledo_classification_biopython()
+    # compute_aledo_classification_biopython_cox()
+    # compute_aledo_classification_cox()
