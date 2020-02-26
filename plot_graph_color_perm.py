@@ -17,6 +17,7 @@ prot_names = ['cox1', 'cox2', 'cox3', 'cytb', 'atp6']
 path_to_colors = '../Coloring/internal_gaps.2/'
 path_to_pdb = '../pdb/'
 out_dir = '../res/graphs_width_and_color_perm/'
+path_to_graphs = '../res/graphs_perm/'
 
 pdb_to_chain_to_prot = {'1occ': {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}, '1bgy': {'C': 'cytb'}, '5ara': {'W': 'atp6'}}
 
@@ -96,21 +97,19 @@ def create_small_graph_with_normalization(graph, cluster_id, permute=False):
     i = 0
     j = 0
     for group, nodes in group_to_nodes.items():
-        gstr = str(group)
         group_edges_pos = {}
         group_edges_neg = {}
         for n1 in nodes:
             n1str = str(n1)
             for n2 in graph.neighbors(n1str):
                 w = float(graph[n1str][n2]['weight'])
+                group2 = nodes_to_groups[int(n2)]
                 if w > 0:
-                    group2 = nodes_to_groups[int(n2)]
                     if group2 in group_edges_pos:
                         group_edges_pos[group2] += w
                     else:
                         group_edges_pos[group2] = w
                 else:
-                    group2 = nodes_to_groups[int(n2)]
                     if group2 in group_edges_neg:
                         group_edges_neg[group2] += w
                     else:
@@ -118,12 +117,12 @@ def create_small_graph_with_normalization(graph, cluster_id, permute=False):
 
         for group2, w in group_edges_pos.items():
             if group <= group2:
-                small_pos.add_edge(gstr, str(group2))
+                small_pos.add_edge(str(group), str(group2))
                 small_pos.es[i]['weight'] = w
                 i += 1
         for group2, w in group_edges_neg.items():
             if group <= group2:
-                small_neg.add_edge(gstr, str(group2))
+                small_neg.add_edge(str(group), str(group2))
                 small_neg.es[j]['weight'] = w
                 j += 1
     return small_pos, small_neg
@@ -213,7 +212,9 @@ def create_contact_graph_with_normalization2():
             for random_graph in random_graphs:
                 for j in range(edge_num):
                     edge = real_graph.es[j]
-                    eid = random_graph.get_eid(edge.source, edge.target, directed=False, error=False)
+                    n1 = real_graph.vs[edge.source]['name']
+                    n2 = real_graph.vs[edge.target]['name']
+                    eid = random_graph.get_eid(n1, n2, directed=False, error=False)
                     if eid != -1:
                         edge['expected'] += random_graph.es[eid]['weight']
             for j in range(edge_num):
@@ -222,34 +223,36 @@ def create_contact_graph_with_normalization2():
     return prot_to_graph
 
 
-def plot_graph(prot_name, graph, base_edge_width):
+def plot_graph(prot_name, graph, base_node_size, base_edge_width, margin):
     min_weight = min(graph.es['weight'])
     max_weight = max(graph.es['weight'])
     norm = MidpointNormalize(vmin=min_weight, vmax=max_weight, midpoint=1.0)
-    m = cm.ScalarMappable(norm=norm, cmap=cm.bwr)#seismic
+    m = cm.ScalarMappable(norm=norm, cmap=cm.coolwarm)#seismic bwr
     m.set_array(np.asarray(graph.es['weight']))
     fig = plt.figure(figsize=(10, 10))
     axes = fig.add_subplot(111)
     plt.axis('off')
     cb = plt.colorbar(m, ax=axes, orientation="horizontal")
-    cb.ax.tick_params(labelsize=22)
+    cb.ax.tick_params(labelsize=36)
     fig.savefig(out_dir + prot_name + '_colorbar.png')
     visual_style = {}
-    visual_style["vertex_size"] = [400 * w for w in graph.vs['weight']]
+    # graph.vs['size'] = [100 * len(graph.vs) * w for w in graph.vs['weight']]
+    visual_style["vertex_size"] = [base_node_size * w for w in graph.vs['weight']]
     visual_style["vertex_label"] = [n for n in graph.vs["name"]]
     visual_style['vertex_color'] = 'white'
-    visual_style["label_size"] = 100
+    visual_style["label_size"] = 36
     visual_style["edge_width"] = [base_edge_width*w for w in graph.es['weight']]
     visual_style['edge_color'] = [m.to_rgba(w) for w in graph.es['weight']]
+    # graph.es['width'] = [10*w for w in graph.es['weight']]
     visual_style["layout"] = graph.layout_circle()
     visual_style["bbox"] = (1000, 1000)
-    visual_style["margin"] = 200
+    visual_style["margin"] = margin
     igraph.plot(graph, out_dir + prot_name + '_color.png', **visual_style)
 
 
-if __name__ == '__main__':
-    if not exists(out_dir):
-        makedirs(out_dir)
+def print_gml():
+    if not exists(path_to_graphs):
+        makedirs(path_to_graphs)
     contact_graphs = create_contact_graph_with_normalization2()
     for prot_name in prot_names:
         graph, cluster_ids = read_data(prot_name)
@@ -263,19 +266,44 @@ if __name__ == '__main__':
         for random_pos, random_neg in random_graphs:
             for j in range(edge_num_pos):
                 edge = small_pos.es[j]
-                eid = random_pos.get_eid(edge.source, edge.target, directed=False, error=False)
+                n1 = small_pos.vs[edge.source]['name']
+                n2 = small_pos.vs[edge.target]['name']
+                eid = random_pos.get_eid(n1, n2, directed=False, error=False)
                 if eid != -1:
                     small_pos.es[j]['expected'] += random_pos.es[eid]['weight']
             for j in range(edge_num_neg):
                 edge = small_neg.es[j]
-                eid = random_neg.get_eid(edge.source, edge.target, directed=False, error=False)
+                n1 = small_neg.vs[edge.source]['name']
+                n2 = small_neg.vs[edge.target]['name']
+                eid = random_neg.get_eid(n1, n2, directed=False, error=False)
                 if eid != -1:
                     small_neg.es[j]['expected'] += random_neg.es[eid]['weight']
         for j in range(edge_num_pos):
             small_pos.es[j]['weight'] = iter_num * small_pos.es[j]['weight'] / small_pos.es[j]['expected']
         for j in range(edge_num_neg):
             small_neg.es[j]['weight'] = iter_num * small_neg.es[j]['weight'] / small_neg.es[j]['expected']
+        small_pos.write_gml(path_to_graphs + prot_name + '_pos.gml')
+        small_neg.write_gml(path_to_graphs + prot_name + '_neg.gml')
+        contact_graphs[prot_name].write_gml(path_to_graphs + prot_name + '_cont.gml')
+
+
+if __name__ == '__main__':
+    # print_gml()
+    if not exists(out_dir):
+        makedirs(out_dir)
+    prot_to_style = {}
+    prot_to_style['cox1'] = {'base_node_size': 820, 'base_edge_width': 13, 'margin': (120, 320, 170, 70)}
+    prot_to_style['cox2'] = {'base_node_size': 600, 'base_edge_width': 15, 'margin': (120, 320, 260, 110)}
+    prot_to_style['cox3'] = {'base_node_size': 800, 'base_edge_width': 11, 'margin': (130, 340, 120, 50)}
+    prot_to_style['atp6'] = {'base_node_size': 690, 'base_edge_width': 5, 'margin': (120, 310, 140, 110)}
+    prot_to_style['cytb'] = {'base_node_size': 870, 'base_edge_width': 6, 'margin': (120, 340, 90, 80)}
+    if not exists(out_dir):
+        makedirs(out_dir)
+    for prot_name in prot_names:
         print(prot_name)
-        plot_graph(prot_name + '_pos', small_pos, 10)
-        plot_graph(prot_name + '_neg', small_neg, 10)
-        plot_graph(prot_name + '_cont', contact_graphs[prot_name], 10)
+        small_pos = igraph.Graph.Read_GML(path_to_graphs + prot_name + '_pos.gml')
+        small_neg = igraph.Graph.Read_GML(path_to_graphs + prot_name + '_neg.gml')
+        contact_graph = igraph.Graph.Read_GML(path_to_graphs + prot_name + '_cont.gml')
+        plot_graph(prot_name + '_pos', small_pos, **prot_to_style[prot_name])
+        plot_graph(prot_name + '_neg', small_neg, **prot_to_style[prot_name])
+        plot_graph(prot_name + '_cont', contact_graph, **prot_to_style[prot_name])

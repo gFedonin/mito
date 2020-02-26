@@ -1,10 +1,10 @@
 from os import listdir
 from os.path import exists
 
-path_to_main_set = '../res/random_graph_stat_hist_ABC_Aledo_igraph'
+path_to_main_set = '../res/random_graph_stat_hist_cytb_Aledo_igraph'
 # additional_sets = range(5, 10)
-out_path = '../res/cox2_Aledo_igraph_ABC_merged.random_graphs'
-prot_name = 'cox2/'
+out_path = '../res/cytb_Aledo_igraph_merged.random_graphs'
+prot_name = 'cytb/'
 
 
 def parse_dir(dir_path):

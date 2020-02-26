@@ -1,3 +1,6 @@
+from os import makedirs, listdir
+from os.path import exists
+
 import networkx as nx
 # import matplotlib
 # import matplotlib.pyplot as plt
@@ -10,48 +13,85 @@ from sklearn.externals.joblib import Parallel, delayed
 
 # matplotlib.use("cairo")
 
-from compute_cluster_stats import parse_pdb, parse_site2pdb, parse_out, get_pdb_neighbors, dist_aledo, dist, \
+from compute_cluster_stats import parse_site2pdb, parse_out, get_pdb_neighbors, dist_aledo, dist, \
     parse_pdb_Aledo_biopython
 
 prot_names = ['cox1', 'cox2', 'cox3', 'cytb', 'atp6']
 
 
-pdb_id = '5ara'
+# pdb_id = '5ara'
 # pdb_id = '1be3'
 # pdb_id = '1bgy'
 # pdb_id = '1occ'
 path_to_pdb = '../pdb/'
-path_to_colors = '../Coloring/internal_gaps.2/'
+# path_to_colors = '../Coloring/internal_gaps.2/'
+path_to_colors = '../Coloring/G10.4/'
+path_to_coevolution_graphs = '../res/G10.4_graphs/'
 
-pdb_to_chain_to_prot = {'1occ': {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}, '1bgy': {'C': 'cytb'}, '5ara': {'W': 'atp6'}}
-chain_to_prot = {'W': 'atp6'}
+pdb_to_chain_to_prot = {'1occ': {'A': 'cox1', 'N': 'cox1', 'B': 'cox2', 'O': 'cox2', 'C': 'cox3', 'P': 'cox3'},
+                        '1bgy': {'C': 'cytb', 'O': 'cytb'},
+                        '5ara': {'W': 'atp6'}}
+pdb_to_prot_to_chain = {'1occ': {'cox1': ['A', 'N'], 'cox2': ['B', 'O'], 'cox3': ['C', 'P']},
+                        '1bgy': {'cytb': ['C', 'O']},
+                        '5ara': {'atp6': ['W']}}
+# chain_to_prot = {'W': 'atp6'}
 # chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
-# chain_to_prot = {'C': 'cytb'}
+# chain_to_prot = {'C': 'cytb', 'O': 'cytb'}
+
+out_path = '../res/graphs_multichain_gml/'
 
 aledo_dist = True
 dist_threshold = 4
 
+use_internal_contacts = True
+use_external_contacts = True
 
-def read_data(prot_name):
-    path_to_pajek_net = '../res/graphs/' + prot_name + '/' + prot_name + '.pcor.up05.net'
-    path_to_pajek_clu = '../res/graphs/' + prot_name + '/' + prot_name + '.pcor.up05.louvain.modularity.clu'
+
+# def read_data(prot_name):
+#     path_to_pajek_net = path_to_coevolution_graphs + prot_name + '/' + prot_name + '.pcor.up05.net'
+#     path_to_pajek_clu = path_to_coevolution_graphs + prot_name + '/' + prot_name + '.pcor.up05.louvain.modularity.clu'
+#     graph = nx.Graph(nx.read_pajek(path_to_pajek_net))
+#     node_names = []
+#     with open(path_to_pajek_net) as f:
+#         node_num = int(f.readline().strip().split(' ')[1])
+#         for l in f.readlines()[:node_num]:
+#             node_names.append(l.strip().split(' ')[1][1:-1])
+#     group_to_nodes = {}
+#     nodes_to_groups = {}
+#     i = 0
+#     for line in open(path_to_pajek_clu).readlines()[1:]:
+#         group = line.strip()
+#         nodes_to_groups[node_names[i]] = group
+#         if group in group_to_nodes:
+#             group_to_nodes[group].append(node_names[i])
+#         else:
+#             group_to_nodes[group] = [node_names[i]]
+#         i += 1
+#     return graph, group_to_nodes, nodes_to_groups
+
+
+def read_data_G10(prot_name):
+    for fname in listdir(path_to_coevolution_graphs):
+        if fname.startswith(prot_name) and fname.endswith('.net'):
+            path_to_pajek_net = path_to_coevolution_graphs + fname
+    for fname in listdir(path_to_colors):
+        if fname.startswith(prot_name) and fname.endswith('.out'):
+            path_to_out = path_to_colors + fname
     graph = nx.Graph(nx.read_pajek(path_to_pajek_net))
-    node_names = []
-    with open(path_to_pajek_net) as f:
-        node_num = int(f.readline().strip().split(' ')[1])
-        for l in f.readlines()[:node_num]:
-            node_names.append(l.strip().split(' ')[1][1:-1])
     group_to_nodes = {}
     nodes_to_groups = {}
-    i = 0
-    for line in open(path_to_pajek_clu).readlines()[1:]:
-        group = line.strip()
-        nodes_to_groups[node_names[i]] = group
+    for line in open(path_to_out).readlines()[5:]:
+        s = line.strip().split()
+        group = s[1]
+        node = s[0]
+        nodes_to_groups[node] = group
         if group in group_to_nodes:
-            group_to_nodes[group].append(node_names[i])
+            group_to_nodes[group].append(node)
         else:
-            group_to_nodes[group] = [node_names[i]]
-        i += 1
+            group_to_nodes[group] = [node]
+    print(prot_name)
+    for group, nodes in group_to_nodes.items():
+        print(group + ' have ' + str(len(nodes)))
     return graph, group_to_nodes, nodes_to_groups
 
 
@@ -247,182 +287,183 @@ def create_small_graph_with_normalization(prot_name, graph, group_to_nodes, node
     return prot_name, small
 
 
-def create_contact_graph_no_normalization():
-    if aledo_dist:
-        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, chain_to_prot)
-    else:
-        chain_to_site_coords = parse_pdb(chain_to_prot, path_to_pdb)
-    prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
-    res = {}
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        pos_to_coords = chain_to_site_coords[prot_name]
-        group_to_nodes = {}
-        node_num = 0
-        for i in range(len(cluster_ids)):
-            g = cluster_ids[i]
-            if g > 0:
-                node_num += 1
-                if g in group_to_nodes:
-                    group_to_nodes[g].append(i)
-                else:
-                    group_to_nodes[g] = [i]
-        if aledo_dist:
-            neighbors = get_pdb_neighbors(pos_to_coords, dist_aledo)
-        else:
-            neighbors = get_pdb_neighbors(pos_to_coords, dist)
-        small = igraph.Graph()
-        small.add_vertices(len(group_to_nodes))
-        i = 0
-        for group, nodes in group_to_nodes.items():
-            small.vs[i]['name'] = str(group)
-            small.vs[i]['weight'] = len(nodes)/node_num
-            i += 1
-            # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
-        sum = 0
-        for group, nodes in group_to_nodes.items():
-            for n1 in nodes:
-                sum += len(neighbors[n1])
-        for group, nodes in group_to_nodes.items():
-            edge_weights = {}
-            for n1 in nodes:
-                for n2 in neighbors[n1]:
-                    if n2 < len(cluster_ids):
-                        group2 = cluster_ids[n2]
-                        if group2 in edge_weights:
-                            edge_weights[group2] += 1
-                        else:
-                            edge_weights[group2] = 1
-            for group2, w in edge_weights.items():
-                if group <= group2:
-                    small.add_edge(str(group), str(group2))
-                    small.es[len(small.es) - 1]['weight'] = w/sum
-        res[prot_name] = small
-    return res
+
+# def create_contact_graph_no_normalization():
+#     if aledo_dist:
+#         chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, chain_to_prot)
+#     else:
+#         chain_to_site_coords = parse_pdb(chain_to_prot, path_to_pdb)
+#     prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
+#     res = {}
+#     for prot_name, method_name, cluster_ids in prot_to_clusters:
+#         pos_to_coords = chain_to_site_coords[prot_name]
+#         group_to_nodes = {}
+#         node_num = 0
+#         for i in range(len(cluster_ids)):
+#             g = cluster_ids[i]
+#             if g > 0:
+#                 node_num += 1
+#                 if g in group_to_nodes:
+#                     group_to_nodes[g].append(i)
+#                 else:
+#                     group_to_nodes[g] = [i]
+#         if aledo_dist:
+#             neighbors = get_pdb_neighbors(pos_to_coords, dist_aledo)
+#         else:
+#             neighbors = get_pdb_neighbors(pos_to_coords, dist)
+#         small = igraph.Graph()
+#         small.add_vertices(len(group_to_nodes))
+#         i = 0
+#         for group, nodes in group_to_nodes.items():
+#             small.vs[i]['name'] = str(group)
+#             small.vs[i]['weight'] = len(nodes)/node_num
+#             i += 1
+#             # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
+#         sum = 0
+#         for group, nodes in group_to_nodes.items():
+#             for n1 in nodes:
+#                 sum += len(neighbors[n1])
+#         for group, nodes in group_to_nodes.items():
+#             edge_weights = {}
+#             for n1 in nodes:
+#                 for n2 in neighbors[n1]:
+#                     if n2 < len(cluster_ids):
+#                         group2 = cluster_ids[n2]
+#                         if group2 in edge_weights:
+#                             edge_weights[group2] += 1
+#                         else:
+#                             edge_weights[group2] = 1
+#             for group2, w in edge_weights.items():
+#                 if group <= group2:
+#                     small.add_edge(str(group), str(group2))
+#                     small.es[len(small.es) - 1]['weight'] = w/sum
+#         res[prot_name] = small
+#     return res
+#
+#
+# def create_contact_graph_with_normalization():
+#     if aledo_dist:
+#         chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, chain_to_prot)
+#     else:
+#         chain_to_site_coords = parse_pdb(chain_to_prot, path_to_pdb)
+#     prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
+#     res = {}
+#     for prot_name, method_name, cluster_ids in prot_to_clusters:
+#         pos_to_coords = chain_to_site_coords[prot_name]
+#         group_to_nodes = {}
+#         node_num = 0
+#         for i in range(len(cluster_ids)):
+#             g = cluster_ids[i]
+#             if g > 0:
+#                 node_num += 1
+#                 if g in group_to_nodes:
+#                     group_to_nodes[g].append(i)
+#                 else:
+#                     group_to_nodes[g] = [i]
+#         if aledo_dist:
+#             neighbors = get_pdb_neighbors(pos_to_coords, dist_aledo)
+#         else:
+#             neighbors = get_pdb_neighbors(pos_to_coords, dist)
+#         small = igraph.Graph()
+#         small.add_vertices(len(group_to_nodes))
+#         i = 0
+#         for group, nodes in group_to_nodes.items():
+#             small.vs[i]['name'] = str(group)
+#             small.vs[i]['weight'] = len(nodes)/node_num
+#             i += 1
+#             # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
+#         sum = 0
+#         for group, nodes in group_to_nodes.items():
+#             for n1 in nodes:
+#                 sum += len(neighbors[n1])
+#         for group, nodes in group_to_nodes.items():
+#             edge_counts = {}
+#             for n1 in nodes:
+#                 for n2 in neighbors[n1]:
+#                     if n2 < len(cluster_ids):
+#                         group2 = cluster_ids[n2]
+#                         if group2 in edge_counts:
+#                             edge_counts[group2] += 1
+#                         else:
+#                             edge_counts[group2] = 1
+#             for group2, w in edge_counts.items():
+#                 if group == group2:
+#                     n1 = len(group_to_nodes[group])
+#                     small.add_edge(str(group), str(group2))
+#                     small.es[len(small.es) - 1]['weight'] = 2*w/(n1*(n1 - 1))
+#                 if group < group2:
+#                     n1 = len(group_to_nodes[group])
+#                     n2 = len(group_to_nodes[group2])
+#                     small.add_edge(str(group), str(group2))
+#                     small.es[len(small.es) - 1]['weight'] = w/(n1*n2)
+#         res[prot_name] = small
+#     return res
+#
+#
+# def create_contact_graph_with_normalization1():
+#     if aledo_dist:
+#         chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, chain_to_prot)
+#     else:
+#         chain_to_site_coords = parse_pdb(chain_to_prot, path_to_pdb)
+#     prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
+#     res = {}
+#     for prot_name, method_name, cluster_ids in prot_to_clusters:
+#         pos_to_coords = chain_to_site_coords[prot_name]
+#         group_to_nodes = {}
+#         node_num = 0
+#         for i in range(len(cluster_ids)):
+#             g = cluster_ids[i]
+#             if g > 0:
+#                 node_num += 1
+#                 if g in group_to_nodes:
+#                     group_to_nodes[g].append(i)
+#                 else:
+#                     group_to_nodes[g] = [i]
+#         if aledo_dist:
+#             neighbors = get_pdb_neighbors(pos_to_coords, dist_aledo)
+#         else:
+#             neighbors = get_pdb_neighbors(pos_to_coords, dist)
+#         small = igraph.Graph()
+#         small.add_vertices(len(group_to_nodes))
+#         i = 0
+#         for group, nodes in group_to_nodes.items():
+#             small.vs[i]['name'] = str(group)
+#             small.vs[i]['weight'] = len(nodes)/node_num
+#             i += 1
+#             # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
+#         sum = 0
+#         for group, nodes in group_to_nodes.items():
+#             for n1 in nodes:
+#                 sum += len(neighbors[n1])
+#         max_edge_num = 0
+#         for n_list in neighbors.values():
+#             if len(n_list) > max_edge_num:
+#                 max_edge_num = len(n_list)
+#         for group, nodes in group_to_nodes.items():
+#             edge_counts = {}
+#             for n1 in nodes:
+#                 for n2 in neighbors[n1]:
+#                     if n2 < len(cluster_ids):
+#                         group2 = cluster_ids[n2]
+#                         if group2 in edge_counts:
+#                             edge_counts[group2] += 1
+#                         else:
+#                             edge_counts[group2] = 1
+#             for group2, w in edge_counts.items():
+#                 if group == group2:
+#                     n1 = len(group_to_nodes[group])
+#                     small.add_edge(str(group), str(group))
+#                     small.es[len(small.es) - 1]['weight'] = w/min(n1*(n1 - 1)/2, max_edge_num*n1)
+#                 if group < group2:
+#                     n1 = len(group_to_nodes[group])
+#                     n2 = len(group_to_nodes[group2])
+#                     small.add_edge(str(group), str(group2))
+#                     small.es[len(small.es) - 1]['weight'] = w/(min(max_edge_num*n1, max_edge_num*n2, n1*n2))
+#         res[prot_name] = small
+#     return res
 
 
-def create_contact_graph_with_normalization():
-    if aledo_dist:
-        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, chain_to_prot)
-    else:
-        chain_to_site_coords = parse_pdb(chain_to_prot, path_to_pdb)
-    prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
-    res = {}
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        pos_to_coords = chain_to_site_coords[prot_name]
-        group_to_nodes = {}
-        node_num = 0
-        for i in range(len(cluster_ids)):
-            g = cluster_ids[i]
-            if g > 0:
-                node_num += 1
-                if g in group_to_nodes:
-                    group_to_nodes[g].append(i)
-                else:
-                    group_to_nodes[g] = [i]
-        if aledo_dist:
-            neighbors = get_pdb_neighbors(pos_to_coords, dist_aledo)
-        else:
-            neighbors = get_pdb_neighbors(pos_to_coords, dist)
-        small = igraph.Graph()
-        small.add_vertices(len(group_to_nodes))
-        i = 0
-        for group, nodes in group_to_nodes.items():
-            small.vs[i]['name'] = str(group)
-            small.vs[i]['weight'] = len(nodes)/node_num
-            i += 1
-            # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
-        sum = 0
-        for group, nodes in group_to_nodes.items():
-            for n1 in nodes:
-                sum += len(neighbors[n1])
-        for group, nodes in group_to_nodes.items():
-            edge_counts = {}
-            for n1 in nodes:
-                for n2 in neighbors[n1]:
-                    if n2 < len(cluster_ids):
-                        group2 = cluster_ids[n2]
-                        if group2 in edge_counts:
-                            edge_counts[group2] += 1
-                        else:
-                            edge_counts[group2] = 1
-            for group2, w in edge_counts.items():
-                if group == group2:
-                    n1 = len(group_to_nodes[group])
-                    small.add_edge(str(group), str(group2))
-                    small.es[len(small.es) - 1]['weight'] = 2*w/(n1*(n1 - 1))
-                if group < group2:
-                    n1 = len(group_to_nodes[group])
-                    n2 = len(group_to_nodes[group2])
-                    small.add_edge(str(group), str(group2))
-                    small.es[len(small.es) - 1]['weight'] = w/(n1*n2)
-        res[prot_name] = small
-    return res
-
-
-def create_contact_graph_with_normalization1():
-    if aledo_dist:
-        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, chain_to_prot)
-    else:
-        chain_to_site_coords = parse_pdb(chain_to_prot, path_to_pdb)
-    prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
-    res = {}
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        pos_to_coords = chain_to_site_coords[prot_name]
-        group_to_nodes = {}
-        node_num = 0
-        for i in range(len(cluster_ids)):
-            g = cluster_ids[i]
-            if g > 0:
-                node_num += 1
-                if g in group_to_nodes:
-                    group_to_nodes[g].append(i)
-                else:
-                    group_to_nodes[g] = [i]
-        if aledo_dist:
-            neighbors = get_pdb_neighbors(pos_to_coords, dist_aledo)
-        else:
-            neighbors = get_pdb_neighbors(pos_to_coords, dist)
-        small = igraph.Graph()
-        small.add_vertices(len(group_to_nodes))
-        i = 0
-        for group, nodes in group_to_nodes.items():
-            small.vs[i]['name'] = str(group)
-            small.vs[i]['weight'] = len(nodes)/node_num
-            i += 1
-            # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
-        sum = 0
-        for group, nodes in group_to_nodes.items():
-            for n1 in nodes:
-                sum += len(neighbors[n1])
-        max_edge_num = 0
-        for n_list in neighbors.values():
-            if len(n_list) > max_edge_num:
-                max_edge_num = len(n_list)
-        for group, nodes in group_to_nodes.items():
-            edge_counts = {}
-            for n1 in nodes:
-                for n2 in neighbors[n1]:
-                    if n2 < len(cluster_ids):
-                        group2 = cluster_ids[n2]
-                        if group2 in edge_counts:
-                            edge_counts[group2] += 1
-                        else:
-                            edge_counts[group2] = 1
-            for group2, w in edge_counts.items():
-                if group == group2:
-                    n1 = len(group_to_nodes[group])
-                    small.add_edge(str(group), str(group))
-                    small.es[len(small.es) - 1]['weight'] = w/min(n1*(n1 - 1)/2, max_edge_num*n1)
-                if group < group2:
-                    n1 = len(group_to_nodes[group])
-                    n2 = len(group_to_nodes[group2])
-                    small.add_edge(str(group), str(group2))
-                    small.es[len(small.es) - 1]['weight'] = w/(min(max_edge_num*n1, max_edge_num*n2, n1*n2))
-        res[prot_name] = small
-    return res
-
-
-def create_a_contact_graph(prot_name, cluster_ids, pos_to_coords):
+def create_a_contact_graph(prot_name, cluster_ids, prot_to_chain, chain_to_site_coords, dist_f):
     group_to_nodes = {}
     node_num = 0
     for i in range(len(cluster_ids)):
@@ -433,10 +474,12 @@ def create_a_contact_graph(prot_name, cluster_ids, pos_to_coords):
                 group_to_nodes[g].append(i)
             else:
                 group_to_nodes[g] = [i]
-    if aledo_dist:
-        neighbors = get_pdb_neighbors(pos_to_coords, dist_aledo)
-    else:
-        neighbors = get_pdb_neighbors(pos_to_coords, dist)
+    # if aledo_dist:
+    #     neighbors = get_pdb_neighbors(pos_to_coords, dist_aledo)
+    # else:
+    #     neighbors = get_pdb_neighbors(pos_to_coords, dist)
+    neighbors = get_pdb_neighbors(prot_name, prot_to_chain, chain_to_site_coords, dist_f, use_internal_contacts,
+                      use_external_contacts)
     small = igraph.Graph()
     small.add_vertices(len(group_to_nodes))
     i = 0
@@ -482,18 +525,22 @@ def create_a_contact_graph(prot_name, cluster_ids, pos_to_coords):
 
 
 def create_contact_graph_with_normalization2():
+    dist_f = dist_aledo
     contact_data = []
     for pdb_id, chain_to_prot in pdb_to_chain_to_prot.items():
-        if aledo_dist:
-            chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb + pdb_id + '.pdb', chain_to_prot)
-        else:
-            chain_to_site_coords = parse_pdb(chain_to_prot, path_to_pdb + pdb_id + '.pdb')
-        prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
+        prot_to_chain = pdb_to_prot_to_chain[pdb_id]
+        # if aledo_dist:
+        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb + pdb_id + '.pdb', chain_to_prot)
+        # else:
+        #     chain_to_site_coords = parse_pdb(chain_to_prot, path_to_pdb + pdb_id + '.pdb')
+        prot_to_clusters = parse_out(parse_site2pdb(prot_to_chain, path_to_colors), prot_to_chain, path_to_colors)
 
         for prot_name, method_name, cluster_ids in prot_to_clusters:
-            contact_data.append((prot_name, cluster_ids, chain_to_site_coords[prot_name]))
-    tasks = Parallel(n_jobs=len(contact_data))(delayed(create_a_contact_graph)(prot_name, cluster_ids, pos_to_coords)
-                                       for prot_name, cluster_ids, pos_to_coords in contact_data)
+
+            contact_data.append((prot_name, cluster_ids, prot_to_chain, chain_to_site_coords))
+    tasks = Parallel(n_jobs=len(contact_data))(delayed(create_a_contact_graph)(prot_name, cluster_ids, prot_to_chain,
+                                                                               chain_to_site_coords, dist_f)
+                                       for prot_name, cluster_ids, prot_to_chain, chain_to_site_coords in contact_data)
     return {prot_name: graph for prot_name, graph in tasks}
 
 
@@ -581,6 +628,8 @@ def print_pajek(out_path, graph):
 
 
 if __name__ == '__main__':
+    if not exists(out_path):
+        makedirs(out_path)
     # for prot_name in prot_names:
     #     print(prot_name)
     #     graph, group_to_nodes, nodes_to_groups = read_data(prot_name)
@@ -591,7 +640,7 @@ if __name__ == '__main__':
     #     small_graph = create_small_graph_with_normalization(graph, group_to_nodes, nodes_to_groups, False)
     #     plot_igraph(small_graph, out_path, 5)
     contact_graphs = create_contact_graph_with_normalization2()
-    coevolution_data = [(prot_name, *read_data(prot_name)) for prot_name in prot_names]
+    coevolution_data = [(prot_name, *read_data_G10(prot_name)) for prot_name in prot_names]
     tasks = Parallel(n_jobs=len(coevolution_data))(delayed(create_small_graph_with_normalization)
                                           (prot_name, graph, group_to_nodes, nodes_to_groups, True)
                                           for prot_name, graph, group_to_nodes, nodes_to_groups in coevolution_data)
@@ -613,9 +662,9 @@ if __name__ == '__main__':
         # plot_graph(prot_name + '_neg', negative_graphs[prot_name], 10, 'blue')
         # plot_graph(prot_name + '_cont', contact_graphs[prot_name], 10, 'black')
         # merge_plots(prot_name)
-        print_gml('../res/graphs_gml/' + prot_name + '_pos.gml', positive_graphs[prot_name])
-        print_gml('../res/graphs_gml/' + prot_name + '_neg.gml', negative_graphs[prot_name])
-        print_gml('../res/graphs_gml/' + prot_name + '_cont.gml', contact_graphs[prot_name])
+        print_gml(out_path + prot_name + '_pos.gml', positive_graphs[prot_name])
+        print_gml(out_path + prot_name + '_neg.gml', negative_graphs[prot_name])
+        print_gml(out_path + prot_name + '_cont.gml', contact_graphs[prot_name])
         # print_pajek('../res/graphs_dot/' + prot_name + '_pos.net', positive_graphs[prot_name])
         # print_pajek('../res/graphs_dot/' + prot_name + '_neg.net', negative_graphs[prot_name])
         # print_pajek('../res/graphs_dot/' + prot_name + '_cont.net', contact_graphs[prot_name])

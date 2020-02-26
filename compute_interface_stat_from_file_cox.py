@@ -15,36 +15,17 @@ import matplotlib.pyplot as plt
 from compute_cluster_stats import dist, parse_colors, parse_out, parse_site2pdb
 from assimptotic_tests import parse_pdb, get_interface, read_cox_data
 
-# pdb_id = '1occ'
-# pdb_id = '1bgy'
-# pdb_id = '1be3'
-pdb_id = '5ara'
+pdb_id = '1occ'
 path_to_pdb = '../pdb/' + pdb_id + '.pdb'
 path_to_cox_data = '../Coloring/COXdata.txt'
-path_to_cytb_data = '../aledo.csv'
-path_to_atp6_data = '../Coloring/atp6_5ara_Aledo_4ang.csv'
-# path_to_atp6_data = '../Coloring/cytb_1bgy_Aledo_4ang_CO.csv'
-path_to_surf_racer_data = '../surf_racer/burried/1bgy.csv'
-path_to_dssp_dir = '../dssp/'
-path_to_dssp_data = path_to_dssp_dir + pdb_id + '.csv'
-path_to_dssp_raw = path_to_dssp_dir + pdb_id + '.dssp'
 # path_to_colors = '../Coloring/internal_gaps.2/'
 # path_to_colors = '../Coloring/mit.int_gaps/p01/'
 path_to_colors = '../Coloring/G10.4/'
 # path_to_colors = '../Coloring/mitohondria.no_gaps/'
 
-# chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
-# chain_to_prot = {'C': 'cytb'}
-# chain_to_prot = {'C': 'cytb', 'O': 'cytb'}
-chain_to_prot = {'W': 'atp6'}
-# chain_to_prot = {'B': 'cox2'}
-# chain_to_prot = {'C': 'cox3'}
-# prot_to_chain = {'cox1': ['A'], 'cox2': ['B'], 'cox3': ['C']}
-# prot_to_chain = {'cytb': 'C'}
-# prot_to_chain = {'cytb': ['C', 'O']}
-prot_to_chain = {'atp6': ['W']}
-# prot_to_chain = {'cox2': 'B'}
-# prot_to_chain = {'cox3': 'C'}
+chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
+prot_to_chain = {'cox1': ['A'], 'cox2': ['B'], 'cox3': ['C']}
+
 
 aledo_dist = True
 dist_threshold = 4
@@ -55,14 +36,8 @@ debug = False
 only_selected_chains = True
 only_mitochondria_to_nuclear = False
 random_graph_stat_hist_path = '../res/random_graph_stat_hist_cytb_Aledo_igraph_multichain/'
-# random_graph_suffix = '_Aledo_igraph_enc_merged.random_graphs'
-# random_graph_suffix = '_enc_Aledo_igraph_multichain.random_graphs'
-# random_graph_suffix = '_ABC_Aledo_igraph_rep.random_graphs'
-# random_graph_suffix = '_Aledo_igraph_multichain.random_graphs'
-random_graph_suffix = '_Aledo_igraph_fixed.random_graphs'
-# random_graph_suffix = '_Aledo_igraph_ABC_merged.random_graphs'
-# random_graph_suffix = '_Aledo_igraph_nonABC_merged.random_graphs'
-random_graph_path = '../res/random_graphs_rep/'
+random_graph_suffix = '.random_graphs'
+random_graph_path = '../res/random_graph_ABC_ind_Aledo_igraph_fixed/'
 permutations_num = 10000
 reverse_shuffle = False
 
@@ -398,13 +373,13 @@ def compute_stat_on_random_subgraphs_all(small_graphs, cl_to_poses, prot_name):
     return chi_sqr_stat, jaccard_index_stat, identity_stat, max_iter_stops, interface
 
 
-def compute_stat_on_random_subgraphs_all_no_chi(small_graphs, cl_to_poses, prot_name):
+def compute_stat_on_random_subgraphs_all_no_chi(small_graphs, cl_to_poses, prot1, prot2):
     identity_stat = [[] for i in range(len(small_graphs))]
     # print('small graphs num %d' % len(small_graphs))
     jaccard_index_stat = {cl: [] for cl in cl_to_poses.keys()}
     max_iter_stops = []
     interface = {cl: [] for cl in cl_to_poses.keys()}
-    with open(random_graph_path + prot_name + random_graph_suffix, 'r') as f:
+    with open(random_graph_path + prot1 + '_vs_' + prot2 + random_graph_suffix, 'r') as f:
         for line in f.readlines():
             sampled_graphs = []
             random_graphs = []
@@ -436,10 +411,10 @@ def compute_stat_on_random_subgraphs_all_no_chi(small_graphs, cl_to_poses, prot_
     return jaccard_index_stat, identity_stat, max_iter_stops, interface
 
 
-def compute_stat_on_random_subgraphs_chi(cl_to_poses, prot_name, cl_to_p_int):
+def compute_stat_on_random_subgraphs_chi(cl_to_poses, prot1, prot2, cl_to_p_int):
     chi_sqr_stat = []
     cl_stats_array = []
-    with open(random_graph_path + prot_name + random_graph_suffix, 'r') as f:
+    with open(random_graph_path + prot1 + '_vs_' + prot2 + random_graph_suffix, 'r') as f:
         for line in f.readlines():
             sampled_graphs = []
             random_graphs = []
@@ -513,179 +488,6 @@ def print_rejection_freqs(max_iter_stops, prot_name):
 chi_sqr_func = chi_sqr
 
 
-def test_independence_chi_sqr(prot_name, chain_to_site_coords, cluster_ids, interface, filter_set, dist_f):
-    cl_to_poses = array_to_dict(cluster_ids, filter_set)
-
-    filtered_poses_num, big_graph, small_graphs = compute_graphs(prot_name, prot_to_chain, chain_to_site_coords, interface,
-                                                                              filter_set, dist_f, use_internal_contacts, use_external_contacts)
-
-    stat = chi_sqr_func(cl_to_poses.values(), interface)
-
-    chi_sqr_stats, identities, max_iter_stops = compute_stat_on_random_subgraphs(small_graphs,
-                                                                                 list(cl_to_poses.values()), prot_name)
-
-    if print_identity_hist:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_random_graphs_identity(small_graphs, identities, prot_name)
-    if print_stat_hist:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_chi_sqr_stat(chi_sqr_stats, stat, prot_name)
-    if print_rejects_stat:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_rejection_freqs(max_iter_stops, prot_name)
-
-    i = 0
-    for s in chi_sqr_stats:
-        if s >= stat:
-            i += 1
-    return i/len(chi_sqr_stats)
-
-
-def test_independence_jaccard(prot_name, chain_to_site_coords, cluster_ids, interface, filter_set, dist_f):
-    cl_to_poses = array_to_dict(cluster_ids, filter_set)
-    filtered_poses_num, big_graph, small_graphs = compute_graphs(prot_name, prot_to_chain, chain_to_site_coords, interface,
-                                                                              filter_set, dist_f, use_internal_contacts, use_external_contacts)
-
-    stat = jaccard_index(cl_to_poses, interface)
-
-    jaccard_index_stats, identities, max_iter_stops = compute_stat_on_random_subgraphs_for_each_group(small_graphs,
-                                                                                 cl_to_poses, prot_name)
-
-    if print_identity_hist:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_random_graphs_identity(small_graphs, identities, prot_name)
-    if print_stat_hist:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_jaccard_index_stat(jaccard_index_stats, stat, prot_name)
-    if print_rejects_stat:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_rejection_freqs(max_iter_stops, prot_name)
-
-    cl_num = 0
-    for id in cluster_ids:
-        if id > cl_num:
-            cl_num = id
-    p_values = np.zeros(cl_num, dtype=float)
-    for cl, val in stat.items():
-        i = 0
-        for s in jaccard_index_stats[cl]:
-            if s >= val:
-                i += 1
-        p_values[cl - 1] = i/len(jaccard_index_stats[cl])
-    return p_values
-
-
-def test_independence_all(prot_name, chain_to_site_coords, cluster_ids, interface, filter_set, dist_f):
-    cl_to_poses = array_to_dict(cluster_ids, filter_set)
-    filtered_poses_num, big_graph, small_graphs = compute_graphs(prot_name, prot_to_chain, chain_to_site_coords, interface,
-                                                                              filter_set, dist_f, use_internal_contacts, use_external_contacts)
-
-    group_stat = chi_sqr_func(cl_to_poses.values(), interface)
-    individual_stats = jaccard_index(cl_to_poses, interface)
-
-    chi_sqr_stats, jaccard_index_stats, identities, max_iter_stops, inter = \
-        compute_stat_on_random_subgraphs_all(small_graphs,cl_to_poses, prot_name)
-
-    if print_identity_hist:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_random_graphs_identity(small_graphs, identities, prot_name)
-    if print_stat_hist:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_chi_sqr_stat(chi_sqr_stats, group_stat, prot_name)
-        print_jaccard_index_stat(jaccard_index_stats, individual_stats, prot_name)
-    if print_rejects_stat:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_rejection_freqs(max_iter_stops, prot_name)
-
-    chi_bigger_count = 0
-    for s in chi_sqr_stats:
-        if s >= group_stat:
-            chi_bigger_count += 1
-    cl_num = 0
-    for id in cluster_ids:
-        if id > cl_num:
-            cl_num = id
-    group_p_value = chi_bigger_count/len(chi_sqr_stats)
-    individual_up_p_values = np.zeros(cl_num, dtype=float)
-    individual_down_p_values = np.zeros(cl_num, dtype=float)
-    expected_interface = np.zeros(cl_num, dtype=float)
-    for cl, val in individual_stats.items():
-        jaccard_bigger_count = 0
-        jaccard_smaller_count = 0
-        sum_inter = sum(inter[cl])
-        for s in jaccard_index_stats[cl]:
-            if s >= val:
-                jaccard_bigger_count += 1
-            if s <= val:
-                jaccard_smaller_count += 1
-        expected_interface[cl - 1] = sum_inter/len(jaccard_index_stats[cl])
-        individual_up_p_values[cl - 1] = jaccard_bigger_count/len(jaccard_index_stats[cl])
-        individual_down_p_values[cl - 1] = jaccard_smaller_count / len(jaccard_index_stats[cl])
-    return group_p_value, individual_up_p_values, individual_down_p_values, expected_interface
-
-
-def test_independence_all_chi(prot_name, chain_to_site_coords, cluster_ids, interface, filter_set, dist_f):
-    cl_to_poses = array_to_dict(cluster_ids, filter_set)
-    filtered_poses_num, big_graph, small_graphs = compute_graphs(prot_name, prot_to_chain, chain_to_site_coords, interface,
-                                                                              filter_set, dist_f, use_internal_contacts, use_external_contacts)
-
-    group_stat = chi_sqr_func(cl_to_poses.values(), interface)
-    individual_stats = individual_chi(cl_to_poses, interface)
-
-    chi_sqr_stats, chi_sqr_ind_stats, identities, max_iter_stops, inter = \
-        compute_stat_on_random_subgraphs_all_ind_chi(small_graphs, cl_to_poses, prot_name)
-
-    if print_identity_hist:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_random_graphs_identity(small_graphs, identities, prot_name)
-    if print_stat_hist:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_chi_sqr_stat(chi_sqr_stats, group_stat, prot_name)
-        print_jaccard_index_stat(chi_sqr_ind_stats, individual_stats, prot_name)
-    if print_rejects_stat:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_rejection_freqs(max_iter_stops, prot_name)
-
-    chi_bigger_count = 0
-    for s in chi_sqr_stats:
-        if s >= group_stat:
-            chi_bigger_count += 1
-    cl_num = 0
-    for id in cluster_ids:
-        if id > cl_num:
-            cl_num = id
-    sample_num = len(chi_sqr_stats)
-    group_p_value = chi_bigger_count/sample_num
-    individual_up_p_values = np.zeros(cl_num, dtype=float)
-    individual_down_p_values = np.zeros(cl_num, dtype=float)
-    expected_interface = np.zeros(cl_num, dtype=float)
-    for cl, val in individual_stats.items():
-        individual_bigger_count = 0
-        individual_smaller_count = 0
-        sum_inter = sum(inter[cl])
-        for s in chi_sqr_ind_stats[cl]:
-            if s >= val:
-                individual_bigger_count += 1
-            if s <= val:
-                individual_smaller_count += 1
-        expected_interface[cl - 1] = sum_inter/sample_num
-        individual_up_p_values[cl - 1] = individual_bigger_count/sample_num
-        individual_down_p_values[cl - 1] = individual_smaller_count/sample_num
-    return group_p_value, individual_up_p_values, individual_down_p_values, expected_interface
-
-
 def array_to_dict(cluster_ids, filter_set):
     cl_to_poses = {}
     for pos in filter_set:
@@ -698,54 +500,6 @@ def array_to_dict(cluster_ids, filter_set):
                     cl_to_poses[cl] = l
                 l.append(pos)
     return cl_to_poses
-
-
-def test_independence_all_modified_chi_assimptotic(prot_name, chain_to_site_coords, cluster_ids, interface, filter_set, dist_f):
-    cl_to_poses = array_to_dict(cluster_ids, filter_set)
-    filtered_poses_num, big_graph, small_graphs = compute_graphs(prot_name, prot_to_chain, chain_to_site_coords, interface,
-                                                                              filter_set, dist_f)
-    individual_stats = jaccard_index(cl_to_poses, interface)
-
-    jaccard_index_stats, identities, max_iter_stops, inter = \
-        compute_stat_on_random_subgraphs_all_no_chi(small_graphs, cl_to_poses, prot_name)
-    # group_stat = chi_sqr(list(cl_to_poses.values()), interface)
-    if print_identity_hist:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_random_graphs_identity(small_graphs, identities, prot_name)
-    if print_stat_hist:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        # print_chi_sqr_stat(chi_sqr_stats, group_stat, prot_name)
-        print_jaccard_index_stat(jaccard_index_stats, individual_stats, prot_name)
-    if print_rejects_stat:
-        if not exists(random_graph_stat_hist_path):
-            makedirs(random_graph_stat_hist_path)
-        print_rejection_freqs(max_iter_stops, prot_name)
-
-    cl_num = 0
-    for id in cluster_ids:
-        if id > cl_num:
-            cl_num = id
-    individual_up_p_values = np.zeros(cl_num, dtype=float)
-    individual_down_p_values = np.zeros(cl_num, dtype=float)
-    expected_interface = np.zeros(cl_num, dtype=float)
-    for cl, val in individual_stats.items():
-        jaccard_bigger_count = 0
-        jaccard_smaller_count = 0
-        sum_inter = sum(inter[cl])
-        for s in jaccard_index_stats[cl]:
-            if s >= val:
-                jaccard_bigger_count += 1
-            if s <= val:
-                jaccard_smaller_count += 1
-        expected_interface[cl - 1] = sum_inter/len(jaccard_index_stats[cl])
-        individual_up_p_values[cl - 1] = jaccard_bigger_count/len(jaccard_index_stats[cl])
-        individual_down_p_values[cl - 1] = jaccard_smaller_count / len(jaccard_index_stats[cl])
-    group_stat, observed, expected = chi_with_given_p_int(cl_to_poses, interface, expected_interface)
-    chi_val, group_p_value = chisquare(observed, expected)
-    # print('my chi=%1.2f their_chi=%1.2f' % (group_stat, chi_val))
-    return group_p_value, individual_up_p_values, individual_down_p_values, expected_interface
 
 
 def print_random_graphs_stats(individual_stats, chi_sqr_stat, cl_stats_array, prot_name):
@@ -767,29 +521,29 @@ def print_random_graphs_stats(individual_stats, chi_sqr_stat, cl_stats_array, pr
             fout.write('\t' + str(chi_sqr_stat[i]) + '\n')
 
 
-def test_independence_all_modified_chi_perm(prot_name, chain_to_site_coords, cluster_ids, interface, filter_set, dist_f):
+def test_independence_all_modified_chi_perm(prot_name1, prot_name2, chain_to_site_coords, cluster_ids, interface, filter_set, dist_f):
     cl_to_poses = array_to_dict(cluster_ids, filter_set)
 
-    filtered_poses_num, big_graph, small_graphs = compute_graphs(prot_name, prot_to_chain, chain_to_site_coords,
+    filtered_poses_num, big_graph, small_graphs = compute_graphs(prot_name1, prot_to_chain, chain_to_site_coords,
                                                                  interface, filter_set, dist_f, use_internal_contacts, use_external_contacts)
     individual_stats = jaccard_index(cl_to_poses, interface)
 
     jaccard_index_stats, identities, max_iter_stops, inter = \
-        compute_stat_on_random_subgraphs_all_no_chi(small_graphs, cl_to_poses, prot_name)
+        compute_stat_on_random_subgraphs_all_no_chi(small_graphs, cl_to_poses, prot_name1, prot_name2)
     # group_stat = chi_sqr(list(cl_to_poses.values()), interface)
     if print_identity_hist:
         if not exists(random_graph_stat_hist_path):
             makedirs(random_graph_stat_hist_path)
-        print_random_graphs_identity(small_graphs, identities, prot_name)
+        print_random_graphs_identity(small_graphs, identities, prot_name1)
     if print_stat_hist:
         if not exists(random_graph_stat_hist_path):
             makedirs(random_graph_stat_hist_path)
         # print_chi_sqr_stat(chi_sqr_stats, group_stat, prot_name)
-        print_jaccard_index_stat(jaccard_index_stats, individual_stats, prot_name)
+        print_jaccard_index_stat(jaccard_index_stats, individual_stats, prot_name1)
     if print_rejects_stat:
         if not exists(random_graph_stat_hist_path):
             makedirs(random_graph_stat_hist_path)
-        print_rejection_freqs(max_iter_stops, prot_name)
+        print_rejection_freqs(max_iter_stops, prot_name1)
 
     cl_num = 0
     for id in cluster_ids:
@@ -811,14 +565,14 @@ def test_independence_all_modified_chi_perm(prot_name, chain_to_site_coords, clu
         individual_up_p_values[cl - 1] = jaccard_bigger_count/len(jaccard_index_stats[cl])
         individual_down_p_values[cl - 1] = jaccard_smaller_count / len(jaccard_index_stats[cl])
     group_stat, observed, expected, cl_stats = chi_with_given_p_int(cl_to_poses, interface, expected_interface)
-    chi_sqr_stat, cl_stats_array = compute_stat_on_random_subgraphs_chi(cl_to_poses, prot_name, expected_interface)
+    chi_sqr_stat, cl_stats_array = compute_stat_on_random_subgraphs_chi(cl_to_poses, prot_name1, prot_name2, expected_interface)
     c = 0
     for stat in chi_sqr_stat:
         if stat > group_stat:
             c += 1
     group_p_value = c / len(chi_sqr_stat)
     if print_jaccard_and_chi_stats:
-        print_random_graphs_stats(jaccard_index_stats, chi_sqr_stat, cl_stats_array, prot_name)
+        print_random_graphs_stats(jaccard_index_stats, chi_sqr_stat, cl_stats_array, prot_name1)
     return group_p_value, individual_up_p_values, individual_down_p_values, expected_interface
 
 
@@ -905,230 +659,6 @@ def count(cluster_ids, interface, filter_set=None):
     return non_int_counts, int_counts
 
 
-def print_unified_intefaces():
-    if aledo_dist:
-        dist_f = dist_aledo
-        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, only_selected_chains, chain_to_prot)
-    else:
-        dist_f = dist
-        chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
-    prot_to_buried, prot_to_non_buried, prot_to_non_interface = read_cox_data(path_to_cox_data)
-    interfaces = {}
-    for prot_name1, chain1 in prot_to_chain.items():
-        coords1 = chain_to_site_coords[chain1]
-        non_burried1 = prot_to_non_buried[prot_name1]
-        for chain2, coords2 in chain_to_site_coords.items():
-            prot_name2 = chain_to_prot.get(chain2)
-            if prot_name2 is not None:
-                non_burried2 = prot_to_non_buried[prot_name2]
-                if only_mitochondria_to_nuclear:
-                    continue
-                if prot_name1 < prot_name2:
-                    int1, int2 = get_interface(coords1, coords2, non_burried1, non_burried2)
-                    l = interfaces.get(prot_name1)
-                    if l is not None:
-                        l.update(int1)
-                    else:
-                        interfaces[prot_name1] = int1
-                    l = interfaces.get(prot_name2)
-                    if l is not None:
-                        l.update(int2)
-                    else:
-                        interfaces[prot_name2] = int2
-            else:
-                int1, int2 = get_interface(coords1, coords2, non_burried1)
-                l = interfaces.get(prot_name1)
-                if l is not None:
-                    l.update(int1)
-                else:
-                    interfaces[prot_name1] = int1
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name != '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
-        int = interfaces[prot_name]
-        coords = chain_to_site_coords[prot_to_chain[prot_name]]
-        filter_set = prot_to_non_buried[prot_name]
-        cl_counts, int_counts = count(cluster_ids, int, filter_set)
-        if method_name != '':
-            p_value = p_values_func(coords, cluster_ids, int, filter_set, prot_name, dist_f)
-        else:
-            p_value = p_values_func(coords, cluster_ids, int, filter_set, prot_name + '.' + method_name, dist_f)
-        print_table(cl_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
-
-
-def print_unified_intefaces_aledo():
-    if aledo_dist:
-        dist_f = dist_aledo
-        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, only_selected_chains, chain_to_prot)
-    else:
-        dist_f = dist
-        chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    prot_to_clusters = parse_out(parse_site2pdb(prot_to_chain, path_to_colors), prot_to_chain, path_to_colors)
-    cox_data = pd.read_csv(path_to_cox_data, sep='\t', decimal='.')
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name == '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
-        chain = prot_to_chain[prot_name][0]
-        non_burried = cox_data[(cox_data['Chain'] == chain) & (cox_data['BCEE'] != 'BURIED')]
-        if only_mitochondria_to_nuclear:
-            interface = set(non_burried.loc[(non_burried['Cont'] == 2) | (non_burried['Cont'] == 3), 'Pos'])
-        else:
-            interface = set(non_burried.loc[(non_burried['Cont'] == 1) | (non_burried['Cont'] == 3), 'Pos'])
-        non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['Pos']))
-        # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['Pos']), prot_name)
-        # print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
-        group_p_value, individual_up_p_values, individual_down_p_values, individual_expected_vals = \
-            p_values_func(prot_name, chain_to_site_coords, cluster_ids, interface, set(non_burried['Pos']), dist_f)
-        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
-                    individual_up_p_values, individual_down_p_values, individual_expected_vals,
-                    'ожидаемо не в интерфейсе', 'ожидаемо в интерфейсе')
-
-
-def print_unified_intefaces_aledo_cytb():
-    if aledo_dist:
-        dist_f = dist_aledo
-        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, only_selected_chains, chain_to_prot)
-    else:
-        dist_f = dist
-        chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
-    cytb_data = pd.read_csv(path_to_cytb_data, sep=',', decimal='.')
-    cytb_data['Prot'] = cytb_data['Chain'].apply(lambda x: chain_to_prot[x])
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name == '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
-        non_burried = cytb_data[(cytb_data['Prot'] == prot_name) & (cytb_data['acc.subunit'] >= 0.05)]
-        interface = set(non_burried.loc[non_burried['InterContact'] > 0, 'ResidNr'])
-        coords = chain_to_site_coords[prot_to_chain[prot_name]]
-        non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['ResidNr']))
-        # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
-        # print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
-        group_p_value, individual_up_p_values, individual_down_p_values, individual_expected_vals = \
-            p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name, dist_f)
-        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
-                    individual_up_p_values, individual_down_p_values, individual_expected_vals, 'ожидаемо не в интерфейсе',
-                    'ожидаемо в интерфейсе')
-
-
-def print_unified_intefaces_aledo_cytb_enc():
-    if aledo_dist:
-        dist_f = dist_aledo
-        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, only_selected_chains, chain_to_prot)
-    else:
-        dist_f = dist
-        chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
-    cytb_data = pd.read_csv(path_to_cytb_data, sep=',', decimal='.')
-    cytb_data['Prot'] = cytb_data['Chain'].apply(lambda x: chain_to_prot[x])
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name == '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
-        non_burried = cytb_data[(cytb_data['Prot'] == prot_name) & (cytb_data['acc.subunit'] >= 0.05)]
-        interface = set(non_burried.loc[(non_burried['InterContact'] > 0) | (non_burried['DeltaSASA'] > 0), 'ResidNr'])
-        coords = chain_to_site_coords[prot_to_chain[prot_name]]
-        non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['ResidNr']))
-        # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
-        # print_table(non_int_counts, int_counts, 'ENC_noninterf', 'CONT + ENC_interface', p_value)
-        group_p_value, individual_up_p_values, individual_down_p_values, individual_expected_vals = \
-            p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name, dist_f)
-        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
-                    individual_up_p_values, individual_down_p_values, individual_expected_vals, 'ожидаемо не в интерфейсе',
-                    'ожидаемо в интерфейсе')
-
-
-def print_unified_intefaces_aledo_atp6():
-    if aledo_dist:
-        dist_f = dist_aledo
-        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, only_selected_chains, chain_to_prot)
-    else:
-        dist_f = dist
-        chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    prot_to_clusters = parse_out(parse_site2pdb(prot_to_chain, path_to_colors), prot_to_chain, path_to_colors)
-    atp6_data = pd.read_csv(path_to_atp6_data, sep='\t', decimal='.')
-    atp6_data['Prot'] = atp6_data['chain'].apply(lambda x: chain_to_prot[x])
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name == '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
-        non_burried = atp6_data[(atp6_data['Prot'] == prot_name) & (atp6_data['BCEE'] != 'BURIED')]
-        interface = set(non_burried.loc[non_burried['InterContact'] > 0, 'pos'])
-        non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['pos']))
-        # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
-        # print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', p_value)
-        group_p_value, individual_up_p_values, individual_down_p_values, individual_expected_vals = \
-            p_values_func(prot_name, chain_to_site_coords, cluster_ids, interface, set(non_burried['pos']), dist_f)
-        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
-                    individual_up_p_values, individual_down_p_values, individual_expected_vals, 'ожидаемо не в интерфейсе',
-                    'ожидаемо в интерфейсе')
-
-
-def print_unified_intefaces_aledo_atp6_enc():
-    if aledo_dist:
-        dist_f = dist_aledo
-        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, only_selected_chains, chain_to_prot)
-    else:
-        dist_f = dist
-        chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    prot_to_clusters = parse_out(parse_site2pdb(prot_to_chain, path_to_colors), prot_to_chain, path_to_colors)
-    atp6_data = pd.read_csv(path_to_atp6_data, sep='\t', decimal='.')
-    atp6_data['Prot'] = atp6_data['chain'].apply(lambda x: chain_to_prot[x])
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name == '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
-        non_burried = atp6_data[(atp6_data['Prot'] == prot_name) & (atp6_data['BCEE'] != 'BURIED')]
-        interface = set(non_burried.loc[(non_burried['BCEE'] == 'CONT') | (non_burried['BCEE'] == 'ENC_interface'), 'pos'])
-        non_int_counts, int_counts = count(cluster_ids, interface, set(non_burried['pos']))
-        # p_value = p_values_func(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name)
-        # print_table(non_int_counts, int_counts, 'ENC_noninterf', 'CONT + ENC_interface', p_value)
-        group_p_value, individual_up_p_values, individual_down_p_values, individual_expected_vals = \
-            p_values_func(prot_name, chain_to_site_coords, cluster_ids, interface, set(non_burried['pos']), dist_f)
-        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
-                    individual_up_p_values, individual_down_p_values, individual_expected_vals, 'ожидаемо не в интерфейсе',
-                    'ожидаемо в интерфейсе')
-
-
-def print_unified_intefaces_enc():
-    if aledo_dist:
-        dist_f = dist_aledo
-        chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, only_selected_chains, chain_to_prot)
-    else:
-        dist_f = dist
-        chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    prot_to_clusters = parse_out(parse_site2pdb(prot_to_chain, path_to_colors), prot_to_chain, path_to_colors)
-    prot_to_burried, prot_to_non_buried, prot_to_non_interface = read_cox_data(path_to_cox_data)
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name != '':
-            print(prot_name + '.' + method_name)
-        else:
-            print(prot_name)
-        non_buried = prot_to_non_buried[prot_name]
-        non_interface = prot_to_non_interface[prot_name]
-        interface = [pos for pos in non_buried if pos not in non_interface]
-        # for i in range(len(cluster_ids)):
-        #     if i not in non_buried:
-        #         cluster_ids[i] = 0
-        non_int_counts, int_counts = count(cluster_ids, interface, non_buried)
-        # p_value = p_values_func(coords, cluster_ids, interface, non_buried, prot_name)
-        # print_table(non_int_counts, int_counts, 'ENC_noninterf', 'CONT + ENC_interface', p_value)
-        group_p_value, individual_up_p_values, individual_down_p_values, individual_expected_vals = \
-            p_values_func(prot_name, chain_to_site_coords, cluster_ids, interface, non_buried, dist_f)
-        print_table(non_int_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
-                    individual_up_p_values, individual_down_p_values, individual_expected_vals, 'ожидаемо не в интерфейсе',
-                    'ожидаемо в интерфейсе')
-
-
 def print_separate_intefaces():
     if aledo_dist:
         dist_f = dist_aledo
@@ -1136,7 +666,7 @@ def print_separate_intefaces():
     else:
         dist_f = dist
         chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
+    prot_to_clusters = parse_out(parse_site2pdb(prot_to_chain, path_to_colors), prot_to_chain, path_to_colors)
     prot_to_buried, prot_to_non_buried, prot_to_non_interface = read_cox_data(path_to_cox_data)
     # prot_to_buried, prot_to_non_buried = read_dssp_data()
     prot_name_to_clusters = {}
@@ -1165,7 +695,7 @@ def print_separate_intefaces():
                 else:
                     print(prot_name1 + ' vs ' + prot_name2)
                 group_p_value, individual_up_p_values, individual_down_p_values, expected_interface = \
-                    p_values_func(prot_name1, chain_to_site_coords, cluster_ids, int1, filter_set, dist_f)
+                    p_values_func(prot_name1, prot_name2, chain_to_site_coords, cluster_ids, int1, filter_set, dist_f)
                 print_table(cl_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
                             individual_up_p_values, individual_down_p_values)
 
@@ -1181,7 +711,7 @@ def print_separate_intefaces():
                 else:
                     print(prot_name2 + ' vs ' + prot_name1)
                 group_p_value, individual_up_p_values, individual_down_p_values, expected_interface = \
-                    p_values_func(prot_name2, chain_to_site_coords, cluster_ids, int2, filter_set, dist_f)
+                    p_values_func(prot_name2, prot_name1, chain_to_site_coords, cluster_ids, int2, filter_set, dist_f)
                 print_table(cl_counts, int_counts, 'не в интерфейсе', 'в интерфейсе', group_p_value,
                             individual_up_p_values, individual_down_p_values)
 
@@ -1225,55 +755,7 @@ def print_table(cl_counts, int_counts, label1, label2, total_p_value=None, indiv
         print('total p_value = %1.4f\n' % total_p_value)
 
 
-def parse_dssp():
-    chain_to_ss = {}
-    for chain in chain_to_prot.keys():
-        chain_to_ss[chain] = {}
-    with open(path_to_dssp_raw) as f:
-        for line in f.readlines()[28:]:
-            s = line.strip().split()
-            if s[2] in chain_to_ss:
-                pos_to_ss = chain_to_ss[s[2]]
-                if s[4] in 'HISTGBEC':
-                    pos_to_ss[int(s[1])] = s[4]
-                else:
-                    pos_to_ss[int(s[1])] = 'C'
-    return chain_to_ss
-
-
-def print_secondary_structure_enrichment():
-    chain_to_ss = parse_dssp()
-    prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
-    prot_to_buried, prot_to_non_buried, prot_to_non_interface = read_cox_data(path_to_cox_data)
-    chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name != '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
-        non_burried = prot_to_non_buried[prot_name]
-        pos_to_ss = chain_to_ss[prot_to_chain[prot_name]]
-        ss_to_pos = {}
-        for pos, ss in pos_to_ss.items():
-            pos_set = ss_to_pos.get(ss)
-            if pos_set is None:
-                pos_set = set()
-                ss_to_pos[ss] = pos_set
-            pos_set.add(pos)
-        coords = chain_to_site_coords[prot_to_chain[prot_name]]
-        for ss, pos_set in ss_to_pos.items():
-            non_int_counts, int_counts = count(cluster_ids, pos_set, non_burried)
-            p_value = p_values_func(coords, cluster_ids, pos_set, non_burried, prot_name)
-            print_table(non_int_counts, int_counts, 'not ' + ss, ss, p_value)
 
 
 if __name__ == '__main__':
-    # print_unified_intefaces()
-    # print_unified_intefaces_enc()
     print_separate_intefaces()
-    # print_unified_intefaces_aledo()
-    # print_unified_intefaces_aledo_cytb()
-    # print_unified_intefaces_aledo_cytb_enc()
-    # print_secondary_structure_enrichment()
-    # print_unified_intefaces_aledo_atp6()
-    # print_unified_intefaces_aledo_atp6_enc()

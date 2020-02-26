@@ -6,10 +6,10 @@ import matplotlib.pyplot as plt
 from sklearn.externals.joblib import Parallel, delayed
 import numpy as np
 
-prot = 'cox1'
-path_to_graphs = '../res/' + prot + '_Aledo_igraph_enc_merged.random_graphs'
-out_path = '../res/random_graphs_identity_enc_Aledo_' + prot
-reverse_shuffle = True
+prot = 'cytb'
+path_to_graphs = '../res/' + prot + '_Aledo_igraph_merged.random_graphs'
+out_path = '../res/random_graphs_identity_Aledo_' + prot
+reverse_shuffle = False
 thread_num = cpu_count()
 
 
@@ -48,24 +48,22 @@ def clustering(graphs_list, threshold):
             graphs_array[i, j] = graphs_list[i][j]
     remaining = np.array(range(1, len(graphs_list)), dtype=int)
     cluster_info = np.empty(len(graphs_list), dtype=int)
-    cluster_info[0] = 1
-    while remaining.size > 0:
+    while remaining.size >= thread_num:
         nums = []
         for i in range(thread_num):
             nums.append(remaining.size//thread_num)
         for i in range(remaining.size%thread_num):
             nums[i] += 1
         sum_num = [0]
-        sum_num.extend(np.cumsum(nums))
+        for i in range(0, thread_num):
+            sum_num.append(sum_num[-1] + nums[i])
         tasks = Parallel(n_jobs=1, backend='threading')(
             delayed(check_last_cluster)(graphs_array, remaining[sum_num[j]: sum_num[j + 1]], centroids[-1], threshold, cluster_info)
             for j in range(thread_num))
-        remaining_new = list(filter(lambda x: cluster_info[x] == 0, remaining))
+        remaining_new = [i for i in remaining if cluster_info[i] == 0]
         if len(remaining_new) == 0:
             break
-        last = remaining_new.pop()
-        centroids.append(graphs_list[last])
-        cluster_info[last] = 1
+        centroids.append(graphs_list[remaining_new.pop()])
         remaining = np.array(remaining_new, dtype=int)
     return len(centroids)/len(graphs_list)
 
@@ -88,7 +86,7 @@ if __name__ == '__main__':
             for j in range(len(random_graphs)):
                 graphs[shuffled_indices[j]].append(random_graphs[j])
     print('reading done')
-    for i in range(3, len(graphs)):
+    for i in range(len(graphs)):
         comp_graphs = graphs[i]
         effective_numbers = []
         thresholds = [j/100 for j in range(95, 30, -5)]

@@ -14,7 +14,7 @@ matplotlib.use('agg')
 
 from sklearn.externals.joblib import Parallel, delayed
 
-from compute_cluster_stats import dist, parse_colors, parse_out, parse_site2pdb
+from compute_cluster_stats import dist, get_pdb_neighbors, dist_aledo
 from assimptotic_tests import parse_pdb, get_interface, read_cox_data
 
 # pdb_id = '5ara'
@@ -24,29 +24,35 @@ pdb_id = '1occ'
 path_to_pdb = '../pdb/' + pdb_id + '.pdb'
 path_to_cox_data = '../Coloring/COXdata.txt'
 path_to_cytb_data = '../aledo.csv'
-path_to_atp6_data = '../Coloring/cytb_1bgy_Aledo_4ang.csv'
+path_to_atp6_data = '../Coloring/atp6_5ara_Aledo_4ang_fixed.csv'
+# path_to_atp6_data = '../Coloring/cytb_1bgy_Aledo_4ang_CO.csv'
 # path_to_surf_racer_data = '../surf_racer/burried/1bgy.csv'
 # path_to_dssp_data = '../dssp/1be3.csv'
-path_to_colors = '../Coloring/internal_gaps.2/'
 
-# chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}#{'A': 'cox1'} {'C': 'cytb'}
+chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}#{'A': 'cox1'} {'C': 'cytb'}
 # chain_to_prot = {'C': 'cytb'}
+# chain_to_prot = {'C': 'cytb', 'O': 'cytb'}
 # chain_to_prot = {'W': 'atp6'}
-chain_to_prot = {'A': 'cox1'}
-# prot_to_chain = {'cox1': 'A', 'cox2': 'B', 'cox3': 'C'}#{'cox1': 'A'} {'cytb': 'C'}
+# chain_to_prot = {'A': 'cox1'}
+# chain_to_prot = {'B': 'cox2'}
+# chain_to_prot = {'C': 'cox3'}
+prot_to_chain = {'cox1': 'A', 'cox2': 'B', 'cox3': 'C'}#{'cox1': 'A'} {'cytb': 'C'}
 # prot_to_chain = {'cytb': 'C'}
-# prot_to_chain = {'atp6': 'W'}
-prot_to_chain = {'cox1': 'A'}
+# prot_to_chain = {'atp6': ['W']}
+# prot_to_chain = {'cox1': 'A'}
+# prot_to_chain = {'cox2': 'B'}
+# prot_to_chain = {'cox3': 'C'}
+# prot_to_chain = {'cytb': ['C', 'O']}
+
 aledo_dist = True
 dist_threshold = 4
+use_internal_contacts = True
+use_external_contacts = True
 
-use_colors = False
-use_cox_data = True
-use_dssp = False
-debug = True
+debug = False
 only_selected_chains = False
 only_mitochondria_to_nuclear = True
-random_graph_stat_hist_path = '../res/random_graph_stat_hist_cox1_enc_Aledo_igraph/'
+random_graph_path = '../res/random_graph_ABC_ind_Aledo_igraph_fixed/'
 # temp_path = random_graph_stat_hist_path + 'temp/'
 if debug:
     thread_num = 1
@@ -75,20 +81,7 @@ max_iter = 10000
 #     return prot_to_buried, prot_to_non_buried
 
 
-def chi_sqr(pos_lists, interface_set, total_pos_num):
-    res = 0
-    p_exp = len(interface_set)/total_pos_num
-    for pos_list in pos_lists:
-        c = 0
-        for pos in pos_list:
-            if pos in interface_set:
-                c += 1
-        p_obs = c/len(pos_list)
-        res += (p_obs - p_exp)*(p_obs - p_exp)/p_exp
-    return total_pos_num*res
-
-
-def gen_random_subgraph(connected_graph, target_node_num, target_edge_num):
+def gen_random_subgraph(connected_graph, target_node_num, target_edge_num, max_iter):
     target_graph = None
     edge_num = -1
     i = 0
@@ -119,7 +112,7 @@ def gen_random_subgraph(connected_graph, target_node_num, target_edge_num):
     return target_graph
 
 
-def gen_random_subgraph_new1(connected_graph, target_node_num, target_edge_num):
+def gen_random_subgraph_new1(connected_graph, target_node_num, target_edge_num, max_iter):
     target_graph = None
     edge_num = -1
     iterNum = 0
@@ -224,7 +217,7 @@ def gen_random_subgraph_new1(connected_graph, target_node_num, target_edge_num):
     return target_graph
 
 
-def gen_random_subgraph_new2(connected_graph, target_node_num, target_edge_num):
+def gen_random_subgraph_new2(connected_graph, target_node_num, target_edge_num, max_iter):
     target_graph = None
     edge_num = -1
     iterNum = 0
@@ -355,8 +348,8 @@ def gen_random_subgraph_new2(connected_graph, target_node_num, target_edge_num):
 
 def print_random_subgraphs(thread_id, big_graph, small_graphs, n, prot_name):
     iter_done = 0
-    if exists(random_graph_stat_hist_path + prot_name + '/' + str(thread_id) + '.random_graphs'):
-        with open(random_graph_stat_hist_path + prot_name + '/' + str(thread_id) + '.random_graphs', 'r') as f:
+    if exists(random_graph_path + prot_name + '/' + str(thread_id) + '.random_graphs'):
+        with open(random_graph_path + prot_name + '/' + str(thread_id) + '.random_graphs', 'r') as f:
             for line in f.readlines():
                 sampled_graphs = []
                 random_graphs = []
@@ -395,7 +388,7 @@ def print_random_subgraphs(thread_id, big_graph, small_graphs, n, prot_name):
             shuffle(connected_comps_filtered)
             random_graph = None
             for g in connected_comps_filtered:
-                random_graph = gen_random_subgraph_new2(g, target_node_num, target_edge_num)
+                random_graph = gen_random_subgraph_new2(g, target_node_num, target_edge_num, max_iter)
                 if random_graph is not None:
                     break
             if random_graph is None:
@@ -407,7 +400,7 @@ def print_random_subgraphs(thread_id, big_graph, small_graphs, n, prot_name):
             else:
                 sampled_graphs.append(small_graph)
                 random_graphs.append(random_graph)
-        with open(random_graph_stat_hist_path + prot_name + '/' + str(thread_id) + '.random_graphs', 'a') as f:
+        with open(random_graph_path + prot_name + '/' + str(thread_id) + '.random_graphs', 'a') as f:
             r_graphs = []
             for g in random_graphs:
                 l = [str(n) for n in g.vs['name']]
@@ -423,23 +416,32 @@ def print_random_subgraphs(thread_id, big_graph, small_graphs, n, prot_name):
     return 1
 
 
-def create_graph(pos_to_coords, poses, dist_f):
+# def create_graph(pos_to_coords, poses, dist_f):
+#     g = Graph()
+#     g.add_vertices(len(poses))
+#     g.vs['name'] = list(poses)
+#     for i in range(len(poses)):
+#         p_i = poses[i]
+#         for j in range(i + 1, len(poses)):
+#             p_j = poses[j]
+#             if dist_f(pos_to_coords[p_i], pos_to_coords[p_j]) < dist_threshold:
+#                 g.add_edges([(i, j)])
+#     return g
+
+
+def create_graph(prot_name, prot_to_chain, chain_to_site_coords, poses, dist_f, use_internal_contacts, use_external_contacts):
+    neighbors = get_pdb_neighbors(prot_name, prot_to_chain, chain_to_site_coords, dist_f, use_internal_contacts, use_external_contacts)
     g = Graph()
     g.add_vertices(len(poses))
     g.vs['name'] = list(poses)
     for i in range(len(poses)):
         p_i = poses[i]
+        n_set = set(neighbors[p_i])
         for j in range(i + 1, len(poses)):
             p_j = poses[j]
-            if dist_f(pos_to_coords[p_i], pos_to_coords[p_j]) < dist_threshold:
+            if p_j in n_set:
                 g.add_edges([(i, j)])
     return g
-
-
-def dist_aledo(heavy_atoms1, heavy_atoms2):
-    n1 = len(heavy_atoms1)
-    n2 = len(heavy_atoms2)
-    return min(dist(heavy_atoms1[i], heavy_atoms2[j]) for i in range(n1) for j in range(n2))
 
 
 def parse_pdb_Aledo_biopython(pdb_name, path_to_pdb, only_selected_chains, chain_to_prot):
@@ -466,11 +468,11 @@ def parse_pdb_Aledo_biopython(pdb_name, path_to_pdb, only_selected_chains, chain
     return chain_to_site_coords
 
 
-def compute_graphs(pos_to_coords, cluster_ids, interface, filter_set, dist_f):
+def compute_graphs(prot_name, prot_to_chain, chain_to_site_coords, interface, filter_set, dist_f, use_internal_contacts, use_external_contacts):
     if debug:
         print('computing p_value')
     filtered_poses = list(filter_set)
-    big_graph = create_graph(pos_to_coords, filtered_poses, dist_f)
+    big_graph = create_graph(prot_name, prot_to_chain, chain_to_site_coords, filtered_poses, dist_f, use_internal_contacts, use_external_contacts)
 
     if debug:
         connected_comps = big_graph.components().subgraphs()
@@ -478,16 +480,6 @@ def compute_graphs(pos_to_coords, cluster_ids, interface, filter_set, dist_f):
         lens = [str(comp.vcount()) for comp in connected_comps]
         print('connected comp lens: ' + ' '.join(lens))
 
-    cl_to_poses = {}
-    for pos in filtered_poses:
-        if pos < len(cluster_ids):
-            cl = cluster_ids[pos]
-            if cl > 0:
-                l = cl_to_poses.get(cl)
-                if l is None:
-                    l = []
-                    cl_to_poses[cl] = l
-                l.append(pos)
     # interface_names = set(str(p) for p in interface)
     int_list = big_graph.vs.select(name_in=interface)
     interface_graph = big_graph.subgraph(int_list)
@@ -496,19 +488,20 @@ def compute_graphs(pos_to_coords, cluster_ids, interface, filter_set, dist_f):
         print('interface:')
         lens = [str(comp.vcount()) for comp in small_graphs]
         print('connected comp lens: ' + ' '.join(lens))
-    return cl_to_poses, len(filtered_poses), big_graph, small_graphs
+    return len(filtered_poses), big_graph, small_graphs
 
 
-def print_all_random_subgraphs(pos_to_coords, cluster_ids, interface, filter_set, prot_name, dist_f):
-    cl_to_poses, filtered_poses_num, big_graph, small_graphs = compute_graphs(pos_to_coords, cluster_ids, interface, filter_set, dist_f)
+def print_all_random_subgraphs(prot_name, chain_to_site_coords, interface, filter_set, dist_f):
+    filtered_poses_num, big_graph, small_graphs = compute_graphs(prot_name, prot_to_chain, chain_to_site_coords,
+                                                                 interface, filter_set, dist_f, use_internal_contacts, use_external_contacts)
 
     iter_nums = []
     for i in range(thread_num):
         iter_nums.append(permutations_num//thread_num)
     for i in range(permutations_num%thread_num):
         iter_nums[i] += 1
-    if not exists(random_graph_stat_hist_path + prot_name):
-        makedirs(random_graph_stat_hist_path + prot_name)
+    if not exists(random_graph_path + prot_name):
+        makedirs(random_graph_path + prot_name)
     tasks = Parallel(n_jobs=thread_num)(delayed(print_random_subgraphs)(i, big_graph, small_graphs,
                                                                         iter_nums[i], prot_name)
                                         for i in range(thread_num))
@@ -543,10 +536,6 @@ def print_unified_intefaces():
     else:
         dist_f = dist
         chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    if use_colors:
-        prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
-    else:
-        prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
     prot_to_buried, prot_to_non_buried, prot_to_non_interface = read_cox_data(path_to_cox_data)
     interfaces = {}
     for prot_name1, chain1 in prot_to_chain.items():
@@ -577,18 +566,12 @@ def print_unified_intefaces():
                     l.update(int1)
                 else:
                     interfaces[prot_name1] = int1
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name != '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
+    for chain, coords in chain_to_site_coords.items():
+        prot_name = chain_to_prot[chain]
         int = interfaces[prot_name]
         coords = chain_to_site_coords[prot_to_chain[prot_name]]
         filter_set = prot_to_non_buried[prot_name]
-        if method_name != '':
-            print_all_random_subgraphs(coords, cluster_ids, int, filter_set, prot_name, dist_f)
-        else:
-            print_all_random_subgraphs(coords, cluster_ids, int, filter_set, prot_name + '.' + method_name, dist_f)
+        print_all_random_subgraphs(coords, int, filter_set, prot_name, dist_f)
 
 
 def print_unified_intefaces_aledo():
@@ -598,28 +581,16 @@ def print_unified_intefaces_aledo():
     else:
         dist_f = dist
         chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    if use_colors:
-        prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
-    else:
-        prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
     cox_data = pd.read_csv(path_to_cox_data, sep='\t', decimal='.')
     # cox_data['Prot'] = cox_data['Chain'].apply(lambda x: chain_to_prot[x])
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name != '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
-        chain = prot_to_chain[prot_name]
+    for chain, coords in chain_to_site_coords.items():
+        prot_name = chain_to_prot[chain]
         non_burried = cox_data[(cox_data['Chain'] == chain) & (cox_data['BCEE'] != 'BURIED')]
         if only_mitochondria_to_nuclear:
             interface = set(non_burried.loc[(non_burried['Cont'] == 2) | (non_burried['Cont'] == 3), 'Pos'])
         else:
             interface = set(non_burried.loc[(non_burried['Cont'] == 1) | (non_burried['Cont'] == 3), 'Pos'])
-        coords = chain_to_site_coords[chain]
-        if method_name != '':
-            print_all_random_subgraphs(coords, cluster_ids, interface, set(non_burried['Pos']), prot_name, dist_f)
-        else:
-            print_all_random_subgraphs(coords, cluster_ids, interface, set(non_burried['Pos']), prot_name + '.' + method_name, dist_f)
+        print_all_random_subgraphs(coords, interface, set(non_burried['Pos']), prot_name, dist_f)
 
 
 def print_unified_intefaces_aledo_cytb():
@@ -629,24 +600,14 @@ def print_unified_intefaces_aledo_cytb():
     else:
         dist_f = dist
         chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    if use_colors:
-        prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
-    else:
-        prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
     cytb_data = pd.read_csv(path_to_cytb_data, sep=',', decimal='.')
     cytb_data['Prot'] = cytb_data['Chain'].apply(lambda x: chain_to_prot[x])
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name != '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
+    for chain, pos_to_coords in chain_to_site_coords.items():
+        prot_name = chain_to_prot[chain]
+        print(prot_name)
         non_burried = cytb_data[(cytb_data['Prot'] == prot_name) & (cytb_data['acc.subunit'] >= 0.05)]
         interface = set(non_burried.loc[non_burried['InterContact'] > 0, 'ResidNr'])
-        coords = chain_to_site_coords[prot_to_chain[prot_name]]
-        if method_name != '':
-            print_all_random_subgraphs(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name, dist_f)
-        else:
-            print_all_random_subgraphs(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name + '.' + method_name, dist_f)
+        print_all_random_subgraphs(prot_name, chain_to_site_coords, interface, set(non_burried['ResidNr']), dist_f)
 
 
 def print_unified_intefaces_aledo_cytb_enc():
@@ -656,24 +617,13 @@ def print_unified_intefaces_aledo_cytb_enc():
     else:
         dist_f = dist
         chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    if use_colors:
-        prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
-    else:
-        prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
     cytb_data = pd.read_csv(path_to_cytb_data, sep=',', decimal='.')
     cytb_data['Prot'] = cytb_data['Chain'].apply(lambda x: chain_to_prot[x])
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name != '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
+    for chain, coords in chain_to_site_coords.items():
+        prot_name = chain_to_prot[chain]
         non_burried = cytb_data[(cytb_data['Prot'] == prot_name) & (cytb_data['acc.subunit'] >= 0.05)]
         interface = set(non_burried.loc[(non_burried['InterContact'] > 0) | (non_burried['DeltaSASA'] > 0), 'ResidNr'])
-        coords = chain_to_site_coords[prot_to_chain[prot_name]]
-        if method_name != '':
-            print_all_random_subgraphs(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name, dist_f)
-        else:
-            print_all_random_subgraphs(coords, cluster_ids, interface, set(non_burried['ResidNr']), prot_name + '.' + method_name, dist_f)
+        print_all_random_subgraphs(prot_name, chain_to_site_coords, interface, set(non_burried['ResidNr']), dist_f)
 
 
 def print_unified_intefaces_aledo_atp6():
@@ -683,24 +633,13 @@ def print_unified_intefaces_aledo_atp6():
     else:
         dist_f = dist
         chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    if use_colors:
-        prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
-    else:
-        prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
     atp6_data = pd.read_csv(path_to_atp6_data, sep='\t', decimal='.')
     atp6_data['Prot'] = atp6_data['chain'].apply(lambda x: chain_to_prot[x])
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name != '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
+    for chain, coords in chain_to_site_coords.items():
+        prot_name = chain_to_prot[chain]
         non_burried = atp6_data[(atp6_data['Prot'] == prot_name) & (atp6_data['BCEE'] != 'BURIED')]
         interface = set(non_burried.loc[non_burried['InterContact'] > 0, 'pos'])
-        coords = chain_to_site_coords[prot_to_chain[prot_name]]
-        if method_name != '':
-            print_all_random_subgraphs(coords, cluster_ids, interface, set(non_burried['pos']), prot_name, dist_f)
-        else:
-            print_all_random_subgraphs(coords, cluster_ids, interface, set(non_burried['pos']), prot_name + '.' + method_name, dist_f)
+        print_all_random_subgraphs(prot_name, chain_to_site_coords, interface, set(non_burried['pos']), dist_f)
 
 
 def print_unified_intefaces_aledo_atp6_enc():
@@ -710,24 +649,13 @@ def print_unified_intefaces_aledo_atp6_enc():
     else:
         dist_f = dist
         chain_to_site_coords = parse_pdb(path_to_pdb, only_selected_chains, chain_to_prot)
-    if use_colors:
-        prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
-    else:
-        prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
     atp6_data = pd.read_csv(path_to_atp6_data, sep='\t', decimal='.')
     atp6_data['Prot'] = atp6_data['chain'].apply(lambda x: chain_to_prot[x])
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name != '':
-            print(prot_name)
-        else:
-            print(prot_name + '.' + method_name)
+    for chain, coords in chain_to_site_coords.items():
+        prot_name = chain_to_prot[chain]
         non_burried = atp6_data[(atp6_data['Prot'] == prot_name) & (atp6_data['BCEE'] != 'BURIED')]
         interface = set(non_burried.loc[(non_burried['BCEE'] == 'CONT') | (non_burried['BCEE'] == 'ENC_interface'), 'pos'])
-        coords = chain_to_site_coords[prot_to_chain[prot_name]]
-        if method_name != '':
-            print_all_random_subgraphs(coords, cluster_ids, interface, set(non_burried['pos']), prot_name, dist_f)
-        else:
-            print_all_random_subgraphs(coords, cluster_ids, interface, set(non_burried['pos']), prot_name + '.' + method_name, dist_f)
+        print_all_random_subgraphs(prot_name, chain_to_site_coords, interface, set(non_burried['pos']), dist_f)
 
 
 def print_unified_intefaces_enc():
@@ -737,27 +665,15 @@ def print_unified_intefaces_enc():
     else:
         dist_f = dist
         chain_to_site_coords = parse_pdb(path_to_pdb + pdb_id, only_selected_chains, chain_to_prot)
-    if use_colors:
-        prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
-    else:
-        prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
     prot_to_burried, prot_to_non_buried, prot_to_non_interface = read_cox_data(path_to_cox_data)
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        if method_name != '':
-            print(prot_name + '.' + method_name)
-        else:
-            print(prot_name)
+    for chain, coords in chain_to_site_coords.items():
+        prot_name = chain_to_prot[chain]
+        print(prot_name)
         non_buried = prot_to_non_buried[prot_name]
         non_interface = prot_to_non_interface[prot_name]
         interface = [pos for pos in non_buried if pos not in non_interface]
         coords = chain_to_site_coords[prot_to_chain[prot_name]]
-        for i in range(len(cluster_ids)):
-            if i not in non_buried:
-                cluster_ids[i] = 0
-        if method_name != '':
-            print_all_random_subgraphs(coords, cluster_ids, interface, non_buried, prot_name + '.' + method_name, dist_f)
-        else:
-            print_all_random_subgraphs(coords, cluster_ids, interface, non_buried, prot_name, dist_f)
+        print_all_random_subgraphs(coords, interface, non_buried, prot_name, dist_f)
 
 
 def print_separate_intefaces():
@@ -767,15 +683,8 @@ def print_separate_intefaces():
     else:
         dist_f = dist
         chain_to_site_coords = parse_pdb(path_to_pdb + pdb_id, only_selected_chains, chain_to_prot)
-    if use_colors:
-        prot_to_clusters = parse_colors(chain_to_prot, path_to_colors)
-    else:
-        prot_to_clusters = parse_out(parse_site2pdb(chain_to_prot, path_to_colors), chain_to_prot, path_to_colors)
     prot_to_buried, prot_to_non_buried, prot_to_non_interface = read_cox_data(path_to_cox_data)
     # prot_to_buried, prot_to_non_buried = read_dssp_data()
-    prot_name_to_clusters = {}
-    for prot_name, method_name, cluster_ids in prot_to_clusters:
-        prot_name_to_clusters[prot_name] = (method_name, cluster_ids)
     for chain1, coords1 in chain_to_site_coords.items():
         prot_name1 = chain_to_prot[chain1]
         non_burried1 = prot_to_non_buried[prot_name1]
@@ -783,57 +692,40 @@ def print_separate_intefaces():
             prot_name2 = chain_to_prot[chain2]
             non_burried2 = prot_to_non_buried[prot_name2]
             if prot_name1 < prot_name2:
-                int1, int2 = get_interface(coords1, coords2, non_burried1, non_burried2)
+                int1, int2 = get_interface(coords1, coords2, dist_f, non_burried1, non_burried2)
                 if len(int1) == 0:
                     continue
-                method_name, cluster_ids = prot_name_to_clusters[prot_name1]
-                coords = chain_to_site_coords[prot_to_chain[prot_name1]]
                 filter_set = non_burried1
-                for i in range(len(cluster_ids)):
-                    if i not in filter_set:
-                        cluster_ids[i] = 0
+                print(prot_name1 + ' vs ' + prot_name2)
+                print_all_random_subgraphs(prot_name1, chain_to_site_coords, int1, filter_set, dist_f)
 
-                if method_name != '':
-                    print(prot_name1 + ' vs ' + prot_name2 + ' ' + method_name)
-                    print_all_random_subgraphs(coords, cluster_ids, int1, filter_set, prot_name1 + ' vs ' + prot_name2 + ' ' + method_name, dist_f)
-                else:
-                    print(prot_name1 + ' vs ' + prot_name2)
-                    print_all_random_subgraphs(coords, cluster_ids, int1, filter_set, prot_name1 + ' vs ' + prot_name2, dist_f)
-                method_name, cluster_ids = prot_name_to_clusters[prot_name2]
-                coords = chain_to_site_coords[prot_to_chain[prot_name2]]
                 filter_set = non_burried2
-                for i in range(len(cluster_ids)):
-                    if i not in filter_set:
-                        cluster_ids[i] = 0
-
-                if method_name != '':
-                    print(prot_name2 + ' vs ' + prot_name1 + ' ' + method_name)
-                    print_all_random_subgraphs(coords, cluster_ids, int2, filter_set, prot_name2 + ' vs ' + prot_name1 + ' ' + method_name, dist_f)
-                else:
-                    print(prot_name2 + ' vs ' + prot_name1)
-                    print_all_random_subgraphs(coords, cluster_ids, int2, filter_set, prot_name2 + ' vs ' + prot_name1, dist_f)
+                print(prot_name2 + ' vs ' + prot_name1)
+                print_all_random_subgraphs(prot_name2, chain_to_site_coords, int2, filter_set, dist_f)
 
 
-def print_table(cl_counts, int_counts, label1, label2, p_value):
-    count_list = []
-    group_num = []
-    for c in cl_counts:
-        group_num.append(str(len(group_num) + 1))
-        count_list.append(str(c))
-    print('номер группы\t' + '\t'.join(group_num))
-    print(label1 + '\t' + '\t'.join(count_list))
-    count_list = []
-    for c in int_counts:
-        count_list.append(str(c))
-    print(label2 + '\t' + '\t'.join(count_list))
-    print('p_value = %1.4f\n' % p_value)
+def print_unified_interface_to_file():
+    cox_data = pd.read_csv(path_to_cox_data, sep='\t', decimal='.')
+    # cox_data['Prot'] = cox_data['Chain'].apply(lambda x: chain_to_prot[x])
+    for chain in chain_to_prot.keys():
+        prot_name = chain_to_prot[chain]
+        non_burried = cox_data[(cox_data['Chain'] == chain) & (cox_data['BCEE'] != 'BURIED')]
+        if only_mitochondria_to_nuclear:
+            interface = set(non_burried.loc[(non_burried['Cont'] == 2) | (non_burried['Cont'] == 3), 'Pos'])
+        else:
+            interface = set(non_burried.loc[(non_burried['Cont'] == 1) | (non_burried['Cont'] == 3), 'Pos'])
+        with open('../res/' + prot_name + '_nonABC.interface', 'w') as f:
+            for pos in interface:
+                f.write(str(pos) + '\n')
 
 
 if __name__ == '__main__':
     # print_unified_intefaces()
-    print_unified_intefaces_enc()
+    # print_unified_intefaces_enc()
     # print_separate_intefaces()
     # print_unified_intefaces_aledo()
+    # print_unified_intefaces_aledo_cytb()
     # print_unified_intefaces_aledo_cytb_enc()
     # print_unified_intefaces_aledo_atp6()
     # print_unified_intefaces_aledo_atp6_enc()
+    print_unified_interface_to_file()

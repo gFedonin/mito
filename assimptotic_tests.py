@@ -101,7 +101,7 @@ def dist(c1, c2):
     return math.sqrt((c1[0] - c2[0])**2 + (c1[1] - c2[1])**2 + (c1[2] - c2[2])**2)
 
 
-def get_interface(pos_to_coords1, pos_to_coords2, filter_set1=None, filter_set2=None):
+def get_interface(pos_to_coords1, pos_to_coords2, dist_f, dist_threshold, filter_set1=None, filter_set2=None):
     pos_to_c1 = []
     for p, c in pos_to_coords1.items():
         if filter_set1 is None or p in filter_set1:
@@ -114,7 +114,7 @@ def get_interface(pos_to_coords1, pos_to_coords2, filter_set1=None, filter_set2=
     interface2 = set()
     for p1, c1 in pos_to_c1:
         for p2, c2 in pos_to_c2:
-            if dist(c1, c2) < dist_threshold:
+            if dist_f(c1, c2) < dist_threshold:
                 interface1.add(p1)
                 interface2.add(p2)
     return interface1, interface2
