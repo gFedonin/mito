@@ -9,9 +9,9 @@ from matplotlib.colors import Normalize
 
 
 # path_to_graphs = '../res/graphs_gml/'
-path_to_graphs = '../res/graphs_multichain_gml/'
+path_to_graphs = '../res/graphs_multichain_gml_test/'
 # out_dir = '../res/graphs_width_and_color1/'
-out_dir = '../res/graphs_width_and_color_multichain/'
+out_dir = '../res/graphs_width_and_color_multichain_test/'
 
 
 prot_names = ['cox1', 'cox2', 'cox3', 'cytb', 'atp6']

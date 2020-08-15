@@ -306,6 +306,31 @@ def merge_plots1(out_dir, prot_name):
 
 out_dir = '../res/graphs_color/'
 
+
+def extract_subgraph(path_to_groups, path_to_graph, group):
+    i = 0
+    group_set = set()
+    positive_edges = []
+    negative_edges = []
+    for l in open(path_to_groups).readlines():
+        if l.strip() == group:
+            group_set.add(str(i))
+        i += 1
+    for l in open(path_to_graph).readlines():
+        s = l.strip().split(' ')
+        if len(s) == 3:
+            if s[0] in group_set and s[1] in group_set:
+                if float(s[2]) > 0:
+                    positive_edges.append(l)
+                else:
+                    negative_edges.append(l)
+    print(' '.join(list(group_set)))
+    print('positive')
+    print(''.join(positive_edges))
+    print('negative')
+    print(''.join(negative_edges))
+
+
 if __name__ == '__main__':
     contact_graphs = create_contact_graph_with_normalization2()
     coevolution_data = [(prot_name, *read_data(prot_name)) for prot_name in prot_names]
@@ -317,20 +342,13 @@ if __name__ == '__main__':
                                           (prot_name, graph, group_to_nodes, nodes_to_groups, False)
                                           for prot_name, graph, group_to_nodes, nodes_to_groups in coevolution_data)
     negative_graphs = {prot_name: g for prot_name, g in tasks}
-    # for prot_name, graph in small_conact_graphs.items():
-    #     plot_graphs(prot_name, [graph], 50)
     for prot_name in prot_names:
         print(prot_name)
-        # graphs = [positive_graphs[prot_name], negative_graphs[prot_name], contact_graphs[prot_name]]
-        # weights = []
-        # for graph in graphs:
-        #     weights.extend(graph.es['weight'])
-        # min_weight = min(weights)
-        # max_weight = max(weights)
-        # norm = colors.Normalize(vmin=min_weight, vmax=max_weight)
-        # m = cm.ScalarMappable(norm=norm, cmap=cm.winter)
-        # m.set_array(np.asarray(weights))
         plot_graph(out_dir, prot_name + '_pos', positive_graphs[prot_name], 10)
         plot_graph(out_dir, prot_name + '_neg', negative_graphs[prot_name], 10)
         plot_graph(out_dir, prot_name + '_cont', contact_graphs[prot_name], 10)
         merge_plots1(out_dir, prot_name)
+    # path_to_groups = '../res/graphs/atp6/atp6.pcor.up05.louvain.modularity.clu'
+    # path_to_graph = '../res/graphs/atp6/atp6.pcor.up05.net'
+    # group = '4'
+    # extract_subgraph(path_to_groups, path_to_graph, group)

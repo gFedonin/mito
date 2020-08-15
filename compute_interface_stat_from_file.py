@@ -22,7 +22,7 @@ pdb_id = '5ara'
 path_to_pdb = '../pdb/' + pdb_id + '.pdb'
 path_to_cox_data = '../Coloring/COXdata.txt'
 path_to_cytb_data = '../aledo.csv'
-path_to_atp6_data = '../Coloring/atp6_5ara_Aledo_4ang.csv'
+path_to_atp6_data = '../Coloring/atp6_5ara_Aledo_4ang_fixed.csv'
 # path_to_atp6_data = '../Coloring/cytb_1bgy_Aledo_4ang_CO.csv'
 path_to_surf_racer_data = '../surf_racer/burried/1bgy.csv'
 path_to_dssp_dir = '../dssp/'
@@ -30,8 +30,9 @@ path_to_dssp_data = path_to_dssp_dir + pdb_id + '.csv'
 path_to_dssp_raw = path_to_dssp_dir + pdb_id + '.dssp'
 # path_to_colors = '../Coloring/internal_gaps.2/'
 # path_to_colors = '../Coloring/mit.int_gaps/p01/'
-path_to_colors = '../Coloring/G10.4/'
+# path_to_colors = '../Coloring/G10.4/'
 # path_to_colors = '../Coloring/mitohondria.no_gaps/'
+path_to_colors = '../res/for_reviewer/'
 
 # chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
 # chain_to_prot = {'C': 'cytb'}
@@ -52,14 +53,14 @@ use_internal_contacts = True
 use_external_contacts = True
 
 debug = False
-only_selected_chains = True
-only_mitochondria_to_nuclear = False
+only_selected_chains = False
+only_mitochondria_to_nuclear = True
 random_graph_stat_hist_path = '../res/random_graph_stat_hist_cytb_Aledo_igraph_multichain/'
 # random_graph_suffix = '_Aledo_igraph_enc_merged.random_graphs'
 # random_graph_suffix = '_enc_Aledo_igraph_multichain.random_graphs'
-# random_graph_suffix = '_ABC_Aledo_igraph_rep.random_graphs'
+# random_graph_suffix = '_enc_Aledo_igraph_rep.random_graphs'
 # random_graph_suffix = '_Aledo_igraph_multichain.random_graphs'
-random_graph_suffix = '_Aledo_igraph_fixed.random_graphs'
+random_graph_suffix = '_enc_Aledo_igraph_fixed.random_graphs'
 # random_graph_suffix = '_Aledo_igraph_ABC_merged.random_graphs'
 # random_graph_suffix = '_Aledo_igraph_nonABC_merged.random_graphs'
 random_graph_path = '../res/random_graphs_rep/'
@@ -1270,10 +1271,10 @@ def print_secondary_structure_enrichment():
 if __name__ == '__main__':
     # print_unified_intefaces()
     # print_unified_intefaces_enc()
-    print_separate_intefaces()
+    # print_separate_intefaces()
     # print_unified_intefaces_aledo()
     # print_unified_intefaces_aledo_cytb()
     # print_unified_intefaces_aledo_cytb_enc()
     # print_secondary_structure_enrichment()
     # print_unified_intefaces_aledo_atp6()
-    # print_unified_intefaces_aledo_atp6_enc()
+    print_unified_intefaces_aledo_atp6_enc()

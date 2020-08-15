@@ -1,9 +1,7 @@
 import os
 from os.path import exists
 from sys import float_info
-
-import matplotlib.pyplot as plt
-import networkx as nx
+import pandas as pd
 import numpy as np
 import math
 
@@ -15,25 +13,29 @@ from sklearn.externals.joblib import Parallel, delayed
 
 # pdb_id = '5ara'
 # pdb_id = '1be3'
-# pdb_id = '1bgy'
+pdb_id = '1bgy'
+# pdb_id = '1occ'
 from assimptotic_tests import read_cox_data
 from compute_interface_stat_rand_int import path_to_cox_data
 
-pdb_id = '1occ'
+
 path_to_pdb = '../pdb/' + pdb_id + '.pdb'
-path_to_pos_list = '../res/cox1_nonABC.interface'
-selected_chain = 'A'
+# path_to_pos_list = '../res/cox1_nonABC.interface'
+path_to_pos_list = '../res/cytb.interface'
+# path_to_atp6_data = '../Coloring/atp6_5ara_Aledo_4ang_fixed.csv'
+path_to_atp6_data = '../Coloring/cytb_1bgy_Aledo_4ang_CO.csv'
+selected_chain = 'C'
 
 # chain_to_prot = {'W': 'atp6'}
 # prot_to_chain = {'atp6': ['W']}
 # chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
-chain_to_prot = {'A': 'cox1'}
+# chain_to_prot = {'A': 'cox1'}
 # chain_to_prot = {'A': 'cox1', 'N': 'cox1', 'B': 'cox2', 'O': 'cox2', 'C': 'cox3', 'P': 'cox3'}
 # prot_to_chain = {'cox1': ['A', 'N'], 'cox2': ['B', 'O'], 'cox3': ['C', 'P']}
-prot_to_chain = {'cox1': 'A'}
+# prot_to_chain = {'cox1': 'A'}
 # chain_to_prot = {'C': 'cytb'}
-# chain_to_prot = {'C': 'cytb', 'O': 'cytb'}
-# prot_to_chain = {'cytb': ['C', 'O']}
+chain_to_prot = {'C': 'cytb', 'O': 'cytb'}
+prot_to_chain = {'cytb': ['C', 'O']}
 # aledo_dist = True
 dist_threshold = 4
 permutations_num = 10000
@@ -565,6 +567,96 @@ def pdb_contact_density():
     print()
 
 
-if __name__ == '__main__':
-    pdb_contact_density()
+def pdb_contact_density_enc():
+    # if aledo_dist:
+    dist_f = dist_aledo
+        # prot_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, chain_to_prot)
+    chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, chain_to_prot)
+    pos_to_coords = chain_to_site_coords[selected_chain]
+    max_pos = max(pos_to_coords.keys())
+    prot_name = chain_to_prot[selected_chain]
+    atp6_data = pd.read_csv(path_to_atp6_data, sep='\t', decimal='.')
+    atp6_data['Prot'] = atp6_data['chain'].apply(lambda x: chain_to_prot[x])
+    non_burried = atp6_data[(atp6_data['Prot'] == prot_name) & (atp6_data['BCEE'] != 'BURIED')]
+    interface = non_burried.loc[(non_burried['BCEE'] == 'CONT') | (non_burried['BCEE'] == 'ENC_interface'), 'pos']
+    cluster_ids = np.zeros(max_pos + 1, dtype=int)
+    for pos in non_burried['pos']:
+        cluster_ids[pos] = 1
+    for pos in interface:
+        cluster_ids[pos] = 2
+    print(prot_name)
+    # pos_to_coords = prot_to_site_coords[prot_name]
+    neighbors = get_pdb_neighbors(prot_name, prot_to_chain, chain_to_site_coords, dist_f, use_internal_contacts, use_external_contacts)
+    # cluster_ids = chain_to_clusters[prot_name]
+    cl_num = 3
+    cluster_id_to_stat, cluster_population, cluster_densities = cluster_stat12(neighbors, cluster_ids, False)
+    # cluster_id_to_stat, cluster_population, cluster_densities = cluster_stat2(neighbors, cluster_ids, False)
+    permutations = Parallel(n_jobs=-1)(delayed(cluster_stat12)(neighbors, cluster_ids, True) for i in range(permutations_num))
+    # permutations = Parallel(n_jobs=-1)(delayed(cluster_stat2)(neighbors, cluster_ids, True) for i in range(permutations_num))
+    perm_array = {}
+    density_array = {}
+    for i in range(1, cl_num):
+        perm_array[i] = []
+        density_array[i] = []
+    perm_array['total'] = []
+    for cl_id_to_stat, cl_population, cl_density in permutations:
+        for i in range(1, cl_num):
+            perm_array[i].append(cl_id_to_stat[i])
+            density_array[i].append(cl_density[i])
+        perm_array['total'].append(cl_id_to_stat['total'])
+    print('cluster n_sites stat_value expected_value pvalue density_value expected_density pvalue_density')
+    for i in range(1, cl_num):
+        stat_val = cluster_id_to_stat[i]
+        av = np.mean(perm_array[i])
+        pval = pvalue(perm_array[i], stat_val)
+        dens = cluster_densities[i]
+        av_dens = np.mean(density_array[i])
+        pval_dens = pvalue(density_array[i], dens)
+        print("%d %d %1.2f %1.2f %1.4f %1.2f %1.2f %1.4f" % (i, cluster_population[i], stat_val, av, pval, dens,
+                                                             av_dens, pval_dens))
+    stat_val = cluster_id_to_stat['total']
+    av = np.mean(perm_array['total'])
+    pval = pvalue(perm_array['total'], stat_val)
+    print('total %d %1.2f %1.2f %1.4f' % (cluster_population.sum() - cluster_population[0], stat_val, av, pval))
+    print()
 
+
+def connected_components():
+    dist_f = dist_aledo
+        # prot_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, chain_to_prot)
+    chain_to_site_coords = parse_pdb_Aledo_biopython(pdb_id, path_to_pdb, chain_to_prot)
+    prot_name = chain_to_prot[selected_chain]
+    atp6_data = pd.read_csv(path_to_atp6_data, sep='\t', decimal='.')
+    atp6_data['Prot'] = atp6_data['chain'].apply(lambda x: chain_to_prot[x])
+    non_burried = atp6_data[(atp6_data['Prot'] == prot_name) & (atp6_data['BCEE'] != 'BURIED')]
+    interface = non_burried.loc[(non_burried['BCEE'] == 'CONT') | (non_burried['BCEE'] == 'ENC_interface'), 'pos']
+    nonburied_set = set(non_burried['pos'])
+    print(prot_name)
+    # pos_to_coords = prot_to_site_coords[prot_name]
+    neighbors = get_pdb_neighbors(prot_name, prot_to_chain, chain_to_site_coords, dist_f, use_internal_contacts, use_external_contacts)
+    # cluster_ids = chain_to_clusters[prot_name]
+    components = []
+    for pos in interface:
+        found = False
+        comp_i = None
+        for comp in components:
+            if pos in comp:
+                comp_i = comp
+                found = True
+        if not found:
+            comp_i = set()
+            comp_i.add(pos)
+            components.append(comp_i)
+        for n in neighbors[pos]:
+            if n in nonburied_set:
+                comp_i.add(n)
+    for comp in components:
+        for p in comp:
+            print(str(p), end=' ')
+        print()
+
+
+if __name__ == '__main__':
+    # pdb_contact_density()
+    # pdb_contact_density_enc()
+    connected_components()

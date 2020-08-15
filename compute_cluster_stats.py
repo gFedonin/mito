@@ -13,22 +13,23 @@ from Bio.PDB import PDBParser
 from numpy.random.mtrand import shuffle
 from sklearn.externals.joblib import Parallel, delayed
 
-pdb_id = '5ara'
+# pdb_id = '5ara'
 # pdb_id = '1be3'
 # pdb_id = '1bgy'
-# pdb_id = '1occ'
+pdb_id = '1occ'
 path_to_pdb = '../pdb/' + pdb_id + '.pdb'
 # path_to_colors = '../Coloring/internal_gaps.2/'
 # path_to_colors = '../Coloring/mit.int_gaps/p01/'
 # path_to_colors = '../Coloring/G10.1/'
-path_to_colors = '../Coloring/G10.4/'
+# path_to_colors = '../Coloring/G10.4/'
 # path_to_colors = '../Coloring/mitohondria.no_gaps/'
+path_to_colors = '../res/for_reviewer/'
 
-chain_to_prot = {'W': 'atp6'}
-prot_to_chain = {'atp6': ['W']}
+# chain_to_prot = {'W': 'atp6'}
+# prot_to_chain = {'atp6': ['W']}
 # chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
-# chain_to_prot = {'A': 'cox1', 'N': 'cox1', 'B': 'cox2', 'O': 'cox2', 'C': 'cox3', 'P': 'cox3'}
-# prot_to_chain = {'cox1': ['A', 'N'], 'cox2': ['B', 'O'], 'cox3': ['C', 'P']}
+chain_to_prot = {'A': 'cox1', 'N': 'cox1', 'B': 'cox2', 'O': 'cox2', 'C': 'cox3', 'P': 'cox3'}
+prot_to_chain = {'cox1': ['A', 'N'], 'cox2': ['B', 'O'], 'cox3': ['C', 'P']}
 # chain_to_prot = {'C': 'cytb'}
 # chain_to_prot = {'C': 'cytb', 'O': 'cytb'}
 # prot_to_chain = {'cytb': ['C', 'O']}
@@ -790,5 +791,5 @@ def print_neighbors():
 
 if __name__ == '__main__':
     # coevolution_density()
-    # pdb_contact_density()
-    print_neighbors()
+    pdb_contact_density()
+    # print_neighbors()

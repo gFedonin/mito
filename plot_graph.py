@@ -1,3 +1,4 @@
+from multiprocessing import Pool
 from os import makedirs, listdir
 from os.path import exists
 
@@ -18,7 +19,6 @@ from compute_cluster_stats import parse_site2pdb, parse_out, get_pdb_neighbors, 
 
 prot_names = ['cox1', 'cox2', 'cox3', 'cytb', 'atp6']
 
-
 # pdb_id = '5ara'
 # pdb_id = '1be3'
 # pdb_id = '1bgy'
@@ -38,7 +38,7 @@ pdb_to_prot_to_chain = {'1occ': {'cox1': ['A', 'N'], 'cox2': ['B', 'O'], 'cox3':
 # chain_to_prot = {'A': 'cox1', 'B': 'cox2', 'C': 'cox3'}
 # chain_to_prot = {'C': 'cytb', 'O': 'cytb'}
 
-out_path = '../res/graphs_multichain_gml/'
+out_path = '../res/graphs_multichain_gml_test/'
 
 aledo_dist = True
 dist_threshold = 4
@@ -95,107 +95,117 @@ def read_data_G10(prot_name):
     return graph, group_to_nodes, nodes_to_groups
 
 
-def create_small_graph(graph, group_to_nodes, nodes_to_groups):
-    # small = nx.MultiDiGraph()
-    small = igraph.Graph(directed=True)
-    small.add_vertices(len(group_to_nodes))
-    i = 0
-    for group, nodes in group_to_nodes.items():
-        small.vs[i]['name'] = group
-        small.vs[i]['weight'] = len(nodes)/len(nodes_to_groups)
-        i += 1
-        # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
-    for group, nodes in group_to_nodes.items():
-        sum_pos = 0
-        sum_neg = 0
-        group_edges_pos = {}
-        group_edges_neg = {}
-        for n1 in nodes:
-            for n2 in graph.neighbors(n1):
-                w = float(graph[n1][n2]['weight'])
-                if w > 0:
-                    sum_pos += w
-                    group2 = nodes_to_groups[n2]
-                    if group2 in group_edges_pos:
-                        group_edges_pos[group2] += w
-                    else:
-                        group_edges_pos[group2] = w
-                else:
-                    sum_neg += w
-                    group2 = nodes_to_groups[n2]
-                    if group2 in group_edges_neg:
-                        group_edges_neg[group2] += w
-                    else:
-                        group_edges_neg[group2] = w
-        # for group2, w in group_edges_pos.items():
-        #     small.add_edge(group, group2)
-        #     small.es[len(small.es) - 1]['key'] = 'pos'
-        #     small.es[len(small.es) - 1]['weight'] = w/sum_pos
-        #     # small.add_edge(group, group2, key='pos', weight=w/sum_pos)
-        for group2, w in group_edges_neg.items():
-            small.add_edge(group, group2)
-            small.es[len(small.es) - 1]['key'] = 'neg'
-            small.es[len(small.es) - 1]['weight'] = w/sum_neg
-            # small.add_edge(group, group2, key='neg', weight=w/sum_neg)
-    return small
+def get_filtered_pos_lists():
+    prot_to_pos_set = {}
+    for pdb_id, chain_to_prot in pdb_to_chain_to_prot.items():
+        prot_to_chain = pdb_to_prot_to_chain[pdb_id]
+        prot_to_site_map = parse_site2pdb(prot_to_chain, path_to_colors)
+        for prot, site2pdb in prot_to_site_map.items():
+            prot_to_pos_set[prot] = set(site2pdb.keys())
+    return prot_to_pos_set
 
 
-def create_small_graph_no_normalization(graph, group_to_nodes, nodes_to_groups, pos_only):
-    # small = nx.MultiDiGraph()
-    small = igraph.Graph()
-    small.add_vertices(len(group_to_nodes))
-    i = 0
-    for group, nodes in group_to_nodes.items():
-        small.vs[i]['name'] = group
-        small.vs[i]['weight'] = len(nodes)/len(nodes_to_groups)
-        i += 1
-        # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
-    sum_pos = 0
-    sum_neg = 0
-    for group, nodes in group_to_nodes.items():
-        for n1 in nodes:
-            for n2 in graph.neighbors(n1):
-                w = float(graph[n1][n2]['weight'])
-                if w > 0:
-                    sum_pos += w
-                else:
-                    sum_neg += w
-    for group, nodes in group_to_nodes.items():
-        group_edges_pos = {}
-        group_edges_neg = {}
-        for n1 in nodes:
-            for n2 in graph.neighbors(n1):
-                w = float(graph[n1][n2]['weight'])
-                if w > 0:
-                    group2 = nodes_to_groups[n2]
-                    if group2 in group_edges_pos:
-                        group_edges_pos[group2] += w
-                    else:
-                        group_edges_pos[group2] = w
-                else:
-                    group2 = nodes_to_groups[n2]
-                    if group2 in group_edges_neg:
-                        group_edges_neg[group2] += w
-                    else:
-                        group_edges_neg[group2] = w
-        if pos_only:
-            for group2, w in group_edges_pos.items():
-                if group <= group2:
-                    small.add_edge(group, group2)
-                    small.es[len(small.es) - 1]['key'] = 'pos'
-                    small.es[len(small.es) - 1]['weight'] = w/sum_pos
-                    # small.add_edge(group, group2, key='pos', weight=w/sum_pos)
-        else:
-            for group2, w in group_edges_neg.items():
-                if group <= group2:
-                    small.add_edge(group, group2)
-                    small.es[len(small.es) - 1]['key'] = 'neg'
-                    small.es[len(small.es) - 1]['weight'] = w/sum_neg
-                    # small.add_edge(group, group2, key='neg', weight=w/sum_neg)
-    return small
+# def create_small_graph(graph, group_to_nodes, nodes_to_groups):
+#     # small = nx.MultiDiGraph()
+#     small = igraph.Graph(directed=True)
+#     small.add_vertices(len(group_to_nodes))
+#     i = 0
+#     for group, nodes in group_to_nodes.items():
+#         small.vs[i]['name'] = group
+#         small.vs[i]['weight'] = len(nodes) / len(nodes_to_groups)
+#         i += 1
+#         # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
+#     for group, nodes in group_to_nodes.items():
+#         sum_pos = 0
+#         sum_neg = 0
+#         group_edges_pos = {}
+#         group_edges_neg = {}
+#         for n1 in nodes:
+#             for n2 in graph.neighbors(n1):
+#                 w = float(graph[n1][n2]['weight'])
+#                 if w > 0:
+#                     sum_pos += w
+#                     group2 = nodes_to_groups[n2]
+#                     if group2 in group_edges_pos:
+#                         group_edges_pos[group2] += w
+#                     else:
+#                         group_edges_pos[group2] = w
+#                 else:
+#                     sum_neg += w
+#                     group2 = nodes_to_groups[n2]
+#                     if group2 in group_edges_neg:
+#                         group_edges_neg[group2] += w
+#                     else:
+#                         group_edges_neg[group2] = w
+#         # for group2, w in group_edges_pos.items():
+#         #     small.add_edge(group, group2)
+#         #     small.es[len(small.es) - 1]['key'] = 'pos'
+#         #     small.es[len(small.es) - 1]['weight'] = w/sum_pos
+#         #     # small.add_edge(group, group2, key='pos', weight=w/sum_pos)
+#         for group2, w in group_edges_neg.items():
+#             small.add_edge(group, group2)
+#             small.es[len(small.es) - 1]['key'] = 'neg'
+#             small.es[len(small.es) - 1]['weight'] = w / sum_neg
+#             # small.add_edge(group, group2, key='neg', weight=w/sum_neg)
+#     return small
+#
+#
+# def create_small_graph_no_normalization(graph, group_to_nodes, nodes_to_groups, pos_only):
+#     # small = nx.MultiDiGraph()
+#     small = igraph.Graph()
+#     small.add_vertices(len(group_to_nodes))
+#     i = 0
+#     for group, nodes in group_to_nodes.items():
+#         small.vs[i]['name'] = group
+#         small.vs[i]['weight'] = len(nodes) / len(nodes_to_groups)
+#         i += 1
+#         # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
+#     sum_pos = 0
+#     sum_neg = 0
+#     for group, nodes in group_to_nodes.items():
+#         for n1 in nodes:
+#             for n2 in graph.neighbors(n1):
+#                 w = float(graph[n1][n2]['weight'])
+#                 if w > 0:
+#                     sum_pos += w
+#                 else:
+#                     sum_neg += w
+#     for group, nodes in group_to_nodes.items():
+#         group_edges_pos = {}
+#         group_edges_neg = {}
+#         for n1 in nodes:
+#             for n2 in graph.neighbors(n1):
+#                 w = float(graph[n1][n2]['weight'])
+#                 if w > 0:
+#                     group2 = nodes_to_groups[n2]
+#                     if group2 in group_edges_pos:
+#                         group_edges_pos[group2] += w
+#                     else:
+#                         group_edges_pos[group2] = w
+#                 else:
+#                     group2 = nodes_to_groups[n2]
+#                     if group2 in group_edges_neg:
+#                         group_edges_neg[group2] += w
+#                     else:
+#                         group_edges_neg[group2] = w
+#         if pos_only:
+#             for group2, w in group_edges_pos.items():
+#                 if group <= group2:
+#                     small.add_edge(group, group2)
+#                     small.es[len(small.es) - 1]['key'] = 'pos'
+#                     small.es[len(small.es) - 1]['weight'] = w / sum_pos
+#                     # small.add_edge(group, group2, key='pos', weight=w/sum_pos)
+#         else:
+#             for group2, w in group_edges_neg.items():
+#                 if group <= group2:
+#                     small.add_edge(group, group2)
+#                     small.es[len(small.es) - 1]['key'] = 'neg'
+#                     small.es[len(small.es) - 1]['weight'] = w / sum_neg
+#                     # small.add_edge(group, group2, key='neg', weight=w/sum_neg)
+#     return small
 
 
-def create_small_graph_with_normalization(prot_name, graph, group_to_nodes, nodes_to_groups, pos_only):
+def create_small_graph_with_normalization(graph, group_to_nodes, nodes_to_groups, pos_set, pos_only):
     # small = nx.MultiDiGraph()
     small = igraph.Graph()
     small.add_vertices(len(group_to_nodes))
@@ -204,9 +214,9 @@ def create_small_graph_with_normalization(prot_name, graph, group_to_nodes, node
     groups.sort()
     groups.reverse()
     for group in groups:
-        nodes = group_to_nodes[group]
+        nodes = [n for n in group_to_nodes[group] if n in pos_set]
         small.vs[i]['name'] = str(group)
-        small.vs[i]['weight'] = len(nodes)/len(nodes_to_groups)
+        small.vs[i]['weight'] = len(nodes) / len(nodes_to_groups)
         i += 1
         # small.add_node(group, weight=len(nodes)/len(nodes_to_groups))
     sum_pos = 0
@@ -215,9 +225,13 @@ def create_small_graph_with_normalization(prot_name, graph, group_to_nodes, node
     nodes_weights_neg = {}
     for group, nodes in group_to_nodes.items():
         for n1 in nodes:
+            if n1 not in pos_set:
+                continue
             sum_w_pos = 0
             sum_w_neg = 0
             for n2 in graph.neighbors(n1):
+                if n2 not in pos_set:
+                    continue
                 w = float(graph[n1][n2]['weight'])
                 if w > 0:
                     sum_pos += w
@@ -234,17 +248,25 @@ def create_small_graph_with_normalization(prot_name, graph, group_to_nodes, node
     for group, nodes in group_to_nodes.items():
         s = 0
         for n in nodes:
+            if n not in pos_set:
+                continue
             s += nodes_weights_pos[n]
         group_weights_pos[group] = s
         s = 0
         for n in nodes:
+            if n not in pos_set:
+                continue
             s += nodes_weights_neg[n]
         group_weights_neg[group] = s
     for group, nodes in group_to_nodes.items():
         group_edges_pos = {}
         group_edges_neg = {}
         for n1 in nodes:
+            if n1 not in pos_set:
+                continue
             for n2 in graph.neighbors(n1):
+                if n2 not in pos_set:
+                    continue
                 w = float(graph[n1][n2]['weight'])
                 if w > 0:
                     group2 = nodes_to_groups[n2]
@@ -264,12 +286,13 @@ def create_small_graph_with_normalization(prot_name, graph, group_to_nodes, node
                     small.add_edge(group, group2)
                     small.es[len(small.es) - 1]['key'] = 'pos'
                     n = group_weights_pos[group]
-                    small.es[len(small.es) - 1]['weight'] = 2*w*sum_pos/n/n
+                    small.es[len(small.es) - 1]['weight'] = 2 * w * sum_pos / n / n
                     # small.add_edge(group, group2, key='pos', weight=w/sum_pos)
                 if group < group2:
                     small.add_edge(group, group2)
                     small.es[len(small.es) - 1]['key'] = 'pos'
-                    small.es[len(small.es) - 1]['weight'] = 2*w*sum_pos/group_weights_pos[group2]/group_weights_pos[group]
+                    small.es[len(small.es) - 1]['weight'] = 2 * w * sum_pos / group_weights_pos[group2] / \
+                                                            group_weights_pos[group]
                     # small.add_edge(group, group2, key='pos', weight=w/sum_pos)
         else:
             for group2, w in group_edges_neg.items():
@@ -277,15 +300,15 @@ def create_small_graph_with_normalization(prot_name, graph, group_to_nodes, node
                     small.add_edge(group, group2)
                     small.es[len(small.es) - 1]['key'] = 'neg'
                     n = group_weights_neg[group]
-                    small.es[len(small.es) - 1]['weight'] = 2*w*sum_neg/n/n
+                    small.es[len(small.es) - 1]['weight'] = 2 * w * sum_neg / n / n
                     # small.add_edge(group, group2, key='neg', weight=w/sum_neg)
                 if group < group2:
                     small.add_edge(group, group2)
                     small.es[len(small.es) - 1]['key'] = 'neg'
-                    small.es[len(small.es) - 1]['weight'] = 2*w*sum_neg/group_weights_neg[group2]/group_weights_neg[group]
+                    small.es[len(small.es) - 1]['weight'] = 2 * w * sum_neg / group_weights_neg[group2] / \
+                                                            group_weights_neg[group]
                     # small.add_edge(group, group2, key='neg', weight=w/sum_neg)
-    return prot_name, small
-
+    return small
 
 
 # def create_contact_graph_no_normalization():
@@ -479,7 +502,7 @@ def create_a_contact_graph(prot_name, cluster_ids, prot_to_chain, chain_to_site_
     # else:
     #     neighbors = get_pdb_neighbors(pos_to_coords, dist)
     neighbors = get_pdb_neighbors(prot_name, prot_to_chain, chain_to_site_coords, dist_f, use_internal_contacts,
-                      use_external_contacts)
+                                  use_external_contacts)
     small = igraph.Graph()
     small.add_vertices(len(group_to_nodes))
     i = 0
@@ -536,11 +559,11 @@ def create_contact_graph_with_normalization2():
         prot_to_clusters = parse_out(parse_site2pdb(prot_to_chain, path_to_colors), prot_to_chain, path_to_colors)
 
         for prot_name, method_name, cluster_ids in prot_to_clusters:
-
             contact_data.append((prot_name, cluster_ids, prot_to_chain, chain_to_site_coords))
     tasks = Parallel(n_jobs=len(contact_data))(delayed(create_a_contact_graph)(prot_name, cluster_ids, prot_to_chain,
                                                                                chain_to_site_coords, dist_f)
-                                       for prot_name, cluster_ids, prot_to_chain, chain_to_site_coords in contact_data)
+                                               for prot_name, cluster_ids, prot_to_chain, chain_to_site_coords in
+                                               contact_data)
     return {prot_name: graph for prot_name, graph in tasks}
 
 
@@ -548,8 +571,8 @@ def plot_graph_nx(graph):
     pos = nx.circular_layout(graph)
     # node_size = [600*len(graph.nodes)*graph.nodes[node]['weight'] for node in graph.nodes]
     # plt.plot()
-    nx.draw_networkx_nodes(graph, pos)#, node_size=node_size
-    nx.draw_networkx_labels(graph, pos, labels={node: 'G'+str(node) for node in graph.nodes})
+    nx.draw_networkx_nodes(graph, pos)  # , node_size=node_size
+    nx.draw_networkx_labels(graph, pos, labels={node: 'G' + str(node) for node in graph.nodes})
     nx.draw_networkx_edges(graph, pos, edgelist=[e for e in graph.edges if e[2] == 'pos'])
     nx.draw_networkx_edges(graph, pos, edgelist=[e for e in graph.edges if e[2] == 'neg'], style='dashed')
     # plt.show()
@@ -560,7 +583,7 @@ def plot_igraph(graph, out_path, edge_width):
     # graph.vs['size'] = [100 * len(graph.vs) * w for w in graph.vs['weight']]
     visual_style["vertex_size"] = [75 * len(graph.vs) * w for w in graph.vs['weight']]
     visual_style["vertex_label"] = ['G' + n for n in graph.vs["name"]]
-    visual_style["edge_width"] = [edge_width*w for w in graph.es['weight']]
+    visual_style["edge_width"] = [edge_width * w for w in graph.es['weight']]
     # graph.es['width'] = [10*w for w in graph.es['weight']]
     visual_style["layout"] = graph.layout_circle()
     # color_dict = {"pos": "blue", "neg": "green"}
@@ -575,7 +598,7 @@ def plot_igraph_contact(prot_name, graph, base_edge_width):
     # graph.vs['size'] = [100 * len(graph.vs) * w for w in graph.vs['weight']]
     visual_style["vertex_size"] = [75 * len(graph.vs) * w for w in graph.vs['weight']]
     visual_style["vertex_label"] = ['G' + n for n in graph.vs["name"]]
-    visual_style["edge_width"] = [base_edge_width*w for w in graph.es['weight']]
+    visual_style["edge_width"] = [base_edge_width * w for w in graph.es['weight']]
     # graph.es['width'] = [10*w for w in graph.es['weight']]
     visual_style["layout"] = graph.layout_circle()
     visual_style["bbox"] = (1000, 1000)
@@ -590,7 +613,7 @@ def plot_graph(prot_name, graph, base_edge_width, edge_color):
     visual_style["vertex_label"] = [n for n in graph.vs["name"]]
     visual_style["label_size"] = 14
     visual_style['vertex_color'] = 'white'
-    visual_style["edge_width"] = [base_edge_width*w for w in graph.es['weight']]
+    visual_style["edge_width"] = [base_edge_width * w for w in graph.es['weight']]
     visual_style['edge_color'] = edge_color
     visual_style["layout"] = graph.layout_circle()
     visual_style["bbox"] = (1000, 1000)
@@ -630,27 +653,21 @@ def print_pajek(out_path, graph):
 if __name__ == '__main__':
     if not exists(out_path):
         makedirs(out_path)
-    # for prot_name in prot_names:
-    #     print(prot_name)
-    #     graph, group_to_nodes, nodes_to_groups = read_data(prot_name)
-    #     out_path = '../res/graphs/' + prot_name + '_with_norm_pos.png'
-    #     small_graph = create_small_graph_with_normalization(graph, group_to_nodes, nodes_to_groups, True)
-    #     plot_igraph(small_graph, out_path, 5)
-    #     out_path = '../res/graphs/' + prot_name + '_with_norm_neg.png'
-    #     small_graph = create_small_graph_with_normalization(graph, group_to_nodes, nodes_to_groups, False)
-    #     plot_igraph(small_graph, out_path, 5)
     contact_graphs = create_contact_graph_with_normalization2()
-    coevolution_data = [(prot_name, *read_data_G10(prot_name)) for prot_name in prot_names]
-    tasks = Parallel(n_jobs=len(coevolution_data))(delayed(create_small_graph_with_normalization)
-                                          (prot_name, graph, group_to_nodes, nodes_to_groups, True)
-                                          for prot_name, graph, group_to_nodes, nodes_to_groups in coevolution_data)
-    positive_graphs = {prot_name: g for prot_name, g in tasks}
-    tasks = Parallel(n_jobs=len(coevolution_data))(delayed(create_small_graph_with_normalization)
-                                          (prot_name, graph, group_to_nodes, nodes_to_groups, False)
-                                          for prot_name, graph, group_to_nodes, nodes_to_groups in coevolution_data)
-    negative_graphs = {prot_name: g for prot_name, g in tasks}
-    # for prot_name, graph in small_conact_graphs.items():
-    #     plot_graphs(prot_name, [graph], 50)
+    prot_to_pos_set = get_filtered_pos_lists()
+    pool = Pool(processes=2*len(prot_names))
+    positive_graphs = {}
+    negative_graphs = {}
+    for prot_name in prot_names:
+        graph, group_to_nodes, nodes_to_groups = read_data_G10(prot_name)
+        positive_graphs[prot_name] = pool.apply_async(create_small_graph_with_normalization, (graph,
+                                                    group_to_nodes, nodes_to_groups,
+                                                    prot_to_pos_set[prot_name], True))
+        negative_graphs[prot_name] = pool.apply_async(create_small_graph_with_normalization, (graph,
+                                                    group_to_nodes, nodes_to_groups,
+                                                    prot_to_pos_set[prot_name], False))
+    pool.close()
+    pool.join()
     for prot_name in prot_names:
         print(prot_name)
         # graphs = [positive_graphs[prot_name], negative_graphs[prot_name], contact_graphs[prot_name]]
@@ -662,8 +679,8 @@ if __name__ == '__main__':
         # plot_graph(prot_name + '_neg', negative_graphs[prot_name], 10, 'blue')
         # plot_graph(prot_name + '_cont', contact_graphs[prot_name], 10, 'black')
         # merge_plots(prot_name)
-        print_gml(out_path + prot_name + '_pos.gml', positive_graphs[prot_name])
-        print_gml(out_path + prot_name + '_neg.gml', negative_graphs[prot_name])
+        print_gml(out_path + prot_name + '_pos.gml', positive_graphs[prot_name].get(timeout=1))
+        print_gml(out_path + prot_name + '_neg.gml', negative_graphs[prot_name].get(timeout=1))
         print_gml(out_path + prot_name + '_cont.gml', contact_graphs[prot_name])
         # print_pajek('../res/graphs_dot/' + prot_name + '_pos.net', positive_graphs[prot_name])
         # print_pajek('../res/graphs_dot/' + prot_name + '_neg.net', negative_graphs[prot_name])
